@@ -30,8 +30,10 @@ use tokio::{
 };
 use tracing::{debug, error, event, field, info, instrument, Level, Span, trace, warn};
 
-use crate::{Error, Result, telemetry};
-use crate::objects::{ConfigOptions, Data, make_volume, make_volume_mount};
+use crate::{Error, Result};
+use crate::helpers::manager::Data;
+use crate::helpers::telemetry;
+use crate::objects::{ConfigOptions, make_volume, make_volume_mount};
 
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(group = "mycelium.njha.dev", version = "v1alpha1", kind = "MinecraftSet")]

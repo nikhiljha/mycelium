@@ -1,5 +1,3 @@
-#![allow(unused_imports, unused_variables)]
-
 use actix_web::{
     App, get,
     HttpRequest,
@@ -7,13 +5,11 @@ use actix_web::{
 };
 use prometheus::{Encoder, TextEncoder};
 use serde_json::json;
-use tracing::{debug, error, info, trace, warn};
+use tracing::{info, warn};
 use tracing_subscriber::{EnvFilter, prelude::*, Registry};
 
 pub use mycelium::*;
-
-use crate::objects::Manager;
-use crate::objects::minecraft_set::reconcile;
+use mycelium::helpers::manager::Manager;
 
 #[get("/metrics")]
 async fn metrics(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
@@ -26,7 +22,7 @@ async fn metrics(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
 
 #[get("/health")]
 async fn health(_: HttpRequest) -> impl Responder {
-    HttpResponse::Ok().json("healthy")
+    HttpResponse::Ok().body("healthy")
 }
 
 #[get("/state")]
@@ -84,7 +80,7 @@ async fn main() -> Result<(), Error> {
     // Start web server
     let server = HttpServer::new(move || {
         App::new()
-            .data(manager.clone())
+            .app_data(manager.clone())
             .wrap(middleware::Logger::default().exclude("/health"))
             .service(state)
             .service(servers)
@@ -93,7 +89,7 @@ async fn main() -> Result<(), Error> {
     })
         .bind("0.0.0.0:8080")
         .expect("can't bind to 0.0.0.0:8080")
-        .shutdown_timeout(0);
+        .shutdown_timeout(1);
 
     tokio::select! {
         _ = set_drainer => warn!("set_controller exited"),

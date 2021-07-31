@@ -19,5 +19,4 @@ pub type Result<T, E = Error> = std::result::Result<T, E>;
 
 /// generated types
 pub mod objects;
-/// logging and tracing
-pub mod telemetry;
+pub mod helpers;
