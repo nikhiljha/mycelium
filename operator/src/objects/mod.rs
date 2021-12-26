@@ -1,39 +1,44 @@
-use std::collections::HashMap;
-use std::fmt::Debug;
-use std::iter::Map;
-use std::ops::Range;
-use std::path::Path;
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::{
+    collections::HashMap,
+    fmt::Debug,
+    iter::Map,
+    ops::Range,
+    path::Path,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
 use chrono::{DateTime, Utc};
-use futures::future::BoxFuture;
-use futures::FutureExt;
-use futures::StreamExt;
-use k8s_openapi::api::apps::v1::StatefulSet;
-use k8s_openapi::api::core::v1::{ConfigMapVolumeSource, Volume, VolumeMount};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference};
-use kube::{Api, Client, Resource};
-use kube::api::ListParams;
-use kube_runtime::Controller;
-use kube_runtime::controller::{Context, ReconcilerAction};
+use futures::{future::BoxFuture, FutureExt, StreamExt};
+use k8s_openapi::{
+    api::{
+        apps::v1::StatefulSet,
+        core::v1::{ConfigMapVolumeSource, ResourceRequirements, Volume, VolumeMount},
+    },
+    apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference},
+};
+use k8s_openapi::api::core::v1::{PersistentVolumeClaim, PodSecurityContext, SecurityContext};
+use kube::{api::ListParams, Api, Client, Resource};
+use kube_runtime::{
+    controller::{Context, ReconcilerAction},
+    Controller,
+};
 use prometheus::{
-    default_registry, HistogramOpts, HistogramVec, IntCounter,
-    proto::MetricFamily, register_histogram_vec, register_int_counter,
+    default_registry, proto::MetricFamily, register_histogram_vec, register_int_counter,
+    HistogramOpts, HistogramVec, IntCounter,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
-use tracing::{debug, error, event, field, info, instrument, Level, Span, trace, warn};
+use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, Span};
 
-use crate::Error;
-use crate::helpers::metrics::Metrics;
-use crate::helpers::state::State;
-use crate::MinecraftProxy;
-use crate::MinecraftSet;
-use crate::objects::minecraft_set::MinecraftSetSpec;
+use crate::{
+    helpers::{metrics::Metrics, state::State},
+    objects::minecraft_set::MinecraftSetSpec,
+    Error, MinecraftProxy, MinecraftSet,
+};
 
-pub mod minecraft_set;
 pub mod minecraft_proxy;
+pub mod minecraft_set;
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 pub struct ConfigOptions {
@@ -41,10 +46,36 @@ pub struct ConfigOptions {
     pub path: String,
 }
 
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
+pub struct ContainerOptions {
+    pub resources: Option<ResourceRequirements>,
+    pub volume: Option<Volume>,
+    pub security_context: Option<PodSecurityContext>,
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
+pub struct RunnerOptions {
+    pub jar: VersionDouble,
+    pub jvm: Option<String>,
+    pub config: Option<Vec<ConfigOptions>>,
+    pub plugins: Option<Vec<String>>,
+}
+
+#[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
+pub struct VersionDouble {
+    pub version: String,
+    pub build: String,
+}
+
 pub fn make_volume_mount(co: &ConfigOptions) -> VolumeMount {
     return VolumeMount {
         name: co.name.clone(),
-        mount_path: String::from(Path::new("/config/").join(&co.path).to_str().expect("mount path")),
+        mount_path: String::from(
+            Path::new("/config/")
+                .join(&co.path)
+                .to_str()
+                .expect("mount path"),
+        ),
         ..VolumeMount::default()
     };
 }
@@ -60,7 +91,7 @@ pub fn make_volume(co: &ConfigOptions) -> Volume {
     };
 }
 
-pub fn object_to_owner_reference<K: Resource<DynamicType=()>>(
+pub fn object_to_owner_reference<K: Resource<DynamicType = ()>>(
     meta: ObjectMeta,
 ) -> Result<OwnerReference, Error> {
     Ok(OwnerReference {

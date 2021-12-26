@@ -1,0 +1,33 @@
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: mycelium-operator
+  namespace: mycelium
+automountServiceAccountToken: true
+
+---
+kind: ClusterRole
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: mycelium-operator
+# TODO: rbac should not be all * :grimace:
+rules:
+  - apiGroups: ["*"]
+    resources: ["*"]
+    verbs:
+      - "*"
+
+---
+kind: ClusterRoleBinding
+apiVersion: rbac.authorization.k8s.io/v1
+metadata:
+  name: mycelium-operator
+subjects:
+  - kind: ServiceAccount
+    namespace: mycelium
+    name: mycelium-operator
+roleRef:
+  kind: ClusterRole
+  name: mycelium-operator
+  apiGroup: rbac.authorization.k8s.io

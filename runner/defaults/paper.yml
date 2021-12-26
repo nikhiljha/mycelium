@@ -1,0 +1,4 @@
+config-version: 20
+settings:
+  velocity-support:
+    enabled: true

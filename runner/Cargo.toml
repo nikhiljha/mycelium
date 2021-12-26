@@ -1,7 +1,7 @@
 [package]
 name = "mycelium-runner"
 version = "0.1.0"
-authors = ["Nikhil Jha <mail@nikhiljha.com>"]
+authors = ["Nikhil Jha <source@nikhiljha.com>"]
 edition = "2018"
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html

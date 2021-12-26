@@ -37,7 +37,7 @@ fn main() -> Result<(), Error> {
     }?;
 
     // download plugins
-    download_plugins(data_path);
+    download_plugins(data_path).unwrap();
 
     // start server
     match server_kind.as_str() {
@@ -62,9 +62,11 @@ fn download_file(url: &str, path: &str) {
 }
 
 fn run_jar(cwd: &str, file: &str) {
-    // TODO: rewrite properly without Command
+    let jvm_opts = env::var("MYCELIUM_JVM_OPTS").unwrap_or("".into());
+    let args: Vec<&str> = jvm_opts.split_terminator(' ').chain(vec!["-jar", file].into_iter()).collect();
+
     Command::new("java")
-        .args(&["-jar", file])
+        .args(args)
         .current_dir(cwd)
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
@@ -76,7 +78,7 @@ fn run_jar(cwd: &str, file: &str) {
 
 fn download_plugins(data_path: &Path) -> Result<(), Error> {
     let plugins_str = env::var("MYCELIUM_PLUGINS").unwrap();
-    let plugins = plugins_str.split(",");
+    let plugins = plugins_str.split_terminator(",");
     let plugin_dir_path = data_path.join("plugins/");
     let plugin_dir = plugin_dir_path.to_str().unwrap();
     create_dir_all(plugin_dir)?;
@@ -90,26 +92,22 @@ fn download_plugins(data_path: &Path) -> Result<(), Error> {
 }
 
 fn download_run_game(data_path: &Path) -> Result<(), Error> {
-    // TODO: fetch the URL from the api
-    // TODO: download this from the jar cache
+    let url = env::var("MYCELIUM_RUNNER_JAR_URL").unwrap();
     let data_path_str = data_path.to_str().unwrap();
     let paper_jar_path = data_path.join("paper.jar");
     let paper_jar_str = paper_jar_path.to_str().unwrap();
-    let url = "https://papermc.io/api/v2/projects/paper/versions/1.17.1/builds/110/downloads/paper-1.17.1-110.jar";
-    download_file(url, paper_jar_str);
+    download_file(&url, paper_jar_str);
     run_jar(data_path_str, "paper.jar");
 
     Ok(())
 }
 
 fn download_run_proxy(data_path: &Path) -> Result<(), Error> {
-    // TODO: fetch the URL from the api
-    // TODO: download this from the jar cache
+    let url = env::var("MYCELIUM_RUNNER_JAR_URL").unwrap();
     let data_path_str = data_path.to_str().unwrap();
     let velocity_jar_path = data_path.join("velocity.jar");
     let velocity_jar_str = velocity_jar_path.to_str().unwrap();
-    let url = "https://versions.velocitypowered.com/download/3.0.0.jar";
-    download_file(url, velocity_jar_str);
+    download_file(&url, velocity_jar_str);
     run_jar(data_path_str, "velocity.jar");
 
     Ok(())
@@ -121,14 +119,11 @@ fn configure_game(token: String, data_path: &Path) -> Result<(), Error> {
     let paper_yaml_path = data_path.join("paper.yml");
     let paper_yaml: String = match read_to_string(paper_yaml_path.clone()) {
         Ok(file) => file,
-        Err(_error) => r#"config-version: 20
-settings:
-    velocity-support:
-        enabled: true"#.to_string(),
+        Err(_error) => include_str!("../defaults/paper.yml").to_string(),
     };
     let loaded = YamlLoader::load_from_str(&paper_yaml).expect("YAML parse");
     let mut yaml_doc = loaded[0].as_hash().unwrap().clone();
-    
+
     // modify the config
     let mut settings = yaml_doc[&Yaml::from_str("settings")].as_hash().unwrap().clone();
     let mut velocity_map = LinkedHashMap::new();
@@ -144,6 +139,15 @@ settings:
     let mut f = File::create(eula_txt_path)?;
     f.write_all("eula=true".as_bytes())?;
 
+    // write server props if dne
+    match read_to_string(data_path.join("server.properties")) {
+        Ok(_) => {}
+        Err(_) => {
+            let mut f = File::create(data_path.join("server.properties"))?;
+            f.write_all(include_str!("../defaults/server.properties").as_bytes())?;
+        }
+    }
+
     // write the modified config
     let mut f = File::create(paper_yaml_path)?;
     let mut out_str = String::new();
@@ -158,15 +162,7 @@ fn configure_proxy(token: String, data_path: &Path) -> Result<(), Error> {
     let velocity_toml_path = data_path.join("velocity.toml");
     let velocity_toml: String = match read_to_string(velocity_toml_path.clone()) {
         Ok(file) => file,
-        Err(_error) => r#"config-version = "1.0"
-bind = "0.0.0.0:25577"
-player-info-forwarding-mode = "modern"
-forwarding-secret = "secret_here"
-
-[servers]
-try = []
-
-[forced-hosts]"#.to_string(),
+        Err(_error) => include_str!("../defaults/velocity.toml").to_string(),
     };
     let mut toml_doc = velocity_toml.parse::<Document>().expect("TOML parse");
 

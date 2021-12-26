@@ -1,13 +1,14 @@
-FROM rust:1.53 as builder
+FROM registry.hub.docker.com/library/rust:1.57 as builder
 
 WORKDIR ./mycelium-runner
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
 COPY ./src ./src
+COPY ./defaults ./defaults
 RUN cargo build --release
 
 
-FROM openjdk:16.0.1-slim-buster
+FROM openjdk:17-slim-bullseye
 
 RUN apt-get update && apt-get install -y curl
 RUN apt-get clean autoclean && apt-get autoremove --yes && rm -rf /var/lib/{apt,dpkg,cache,log}/

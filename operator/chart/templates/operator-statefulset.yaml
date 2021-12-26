@@ -1,0 +1,48 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  labels:
+    app: mycelium-operator
+  name: mycelium-operator
+  namespace: mycelium
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: mycelium-operator
+  template:
+    metadata:
+      annotations:
+        prometheus.io/port: '8080'
+        prometheus.io/scrape: 'true'
+      labels:
+        app: mycelium-operator
+    spec:
+      containers:
+        - name: operator
+          image: "harbor.ocf.berkeley.edu/mycelium/operator:{{ .Chart.AppVersion }}"
+          env:
+            - name: MYCELIUM_FW_TOKEN
+              valueFrom:
+                secretKeyRef:
+                  name: mycelium-operator
+                  key: forwarding_token
+            - name: MYCELIUM_ENDPOINT
+              value: mycelium-operator.mycelium.svc.cluster.local:8080
+          ports:
+            - containerPort: 8080
+              name: api
+          readinessProbe:
+            httpGet:
+              path: /health
+              port: api
+            initialDelaySeconds: 5
+            periodSeconds: 5
+          resources:
+              limits:
+                cpu: 200m
+                memory: 256Mi
+              requests:
+                cpu: 50m
+                memory: 100Mi
+      serviceAccountName: mycelium-operator

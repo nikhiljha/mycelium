@@ -1,15 +1,16 @@
+use std::env;
+
 use actix_web::{
-    App, get,
-    HttpRequest,
-    HttpResponse, HttpServer, middleware, Responder, web::{self, Data},
+    get, middleware,
+    web::{self, Data},
+    App, HttpRequest, HttpResponse, HttpServer, Responder,
 };
+use mycelium::helpers::manager::Manager;
+pub use mycelium::*;
 use prometheus::{Encoder, TextEncoder};
 use serde_json::json;
 use tracing::{info, warn};
-use tracing_subscriber::{EnvFilter, prelude::*, Registry};
-
-pub use mycelium::*;
-use mycelium::helpers::manager::Manager;
+use tracing_subscriber::{prelude::*, EnvFilter, Registry};
 
 #[get("/metrics")]
 async fn metrics(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
@@ -40,12 +41,16 @@ async fn servers(c: Data<Manager>, path: web::Path<(String, String, String)>) ->
 
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
+    // Validate config
+    env::var("MYCELIUM_FW_TOKEN").unwrap();
+    env::var("MYCELIUM_ENDPOINT").unwrap();
+
     #[cfg(feature = "telemetry")]
-        let otlp_endpoint =
+    let otlp_endpoint =
         std::env::var("OPENTELEMETRY_ENDPOINT_URL").expect("otel tracing collector not configured");
 
     #[cfg(feature = "telemetry")]
-        let tracer = opentelemetry_otlp::new_pipeline()
+    let tracer = opentelemetry_otlp::new_pipeline()
         .with_endpoint(&otlp_endpoint)
         .with_trace_config(opentelemetry::sdk::trace::config().with_resource(
             opentelemetry::sdk::Resource::new(vec![opentelemetry::KeyValue::new(
@@ -59,7 +64,7 @@ async fn main() -> Result<(), Error> {
 
     // Finish layers
     #[cfg(feature = "telemetry")]
-        let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
+    let telemetry = tracing_opentelemetry::layer().with_tracer(tracer);
     let logger = tracing_subscriber::fmt::layer().json();
 
     let env_filter = EnvFilter::try_from_default_env()
@@ -68,9 +73,12 @@ async fn main() -> Result<(), Error> {
 
     // Register all subscribers
     #[cfg(feature = "telemetry")]
-        let collector = Registry::default().with(telemetry).with(logger).with(env_filter);
+    let collector = Registry::default()
+        .with(telemetry)
+        .with(logger)
+        .with(env_filter);
     #[cfg(not(feature = "telemetry"))]
-        let collector = Registry::default().with(logger).with(env_filter);
+    let collector = Registry::default().with(logger).with(env_filter);
 
     tracing::subscriber::set_global_default(collector).unwrap();
 
@@ -80,16 +88,16 @@ async fn main() -> Result<(), Error> {
     // Start web server
     let server = HttpServer::new(move || {
         App::new()
-            .app_data(manager.clone())
+            .app_data(Data::new(manager.clone()))
             .wrap(middleware::Logger::default().exclude("/health"))
             .service(state)
             .service(servers)
             .service(health)
             .service(metrics)
     })
-        .bind("0.0.0.0:8080")
-        .expect("can't bind to 0.0.0.0:8080")
-        .shutdown_timeout(1);
+    .bind("0.0.0.0:8080")
+    .expect("can't bind to 0.0.0.0:8080")
+    .shutdown_timeout(1);
 
     tokio::select! {
         _ = set_drainer => warn!("set_controller exited"),

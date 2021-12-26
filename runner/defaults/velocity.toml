@@ -1,0 +1,9 @@
+config-version = "1.0"
+bind = "0.0.0.0:25577"
+player-info-forwarding-mode = "modern"
+forwarding-secret = "secret_here"
+
+[servers]
+try = []
+
+[forced-hosts]

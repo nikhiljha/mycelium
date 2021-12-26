@@ -1,3 +1,4 @@
+pub mod jarapi;
 pub mod manager;
 pub mod metrics;
 pub mod state;

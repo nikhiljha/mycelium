@@ -1,24 +1,29 @@
-use std::sync::{Arc, RwLock};
-use std::time::Duration;
+use std::{
+    env,
+    sync::{Arc, RwLock},
+    time::Duration,
+};
 
-use futures::future::BoxFuture;
-use futures::FutureExt;
-use futures::StreamExt;
+use futures::{future::BoxFuture, FutureExt, StreamExt};
 use k8s_openapi::api::apps::v1::StatefulSet;
-use kube::{Api, Client};
-use kube::api::ListParams;
-use kube_runtime::Controller;
-use kube_runtime::controller::{Context, ReconcilerAction};
-use prometheus::default_registry;
-use prometheus::proto::MetricFamily;
+use kube::{api::ListParams, Api, Client};
+use kube_runtime::{
+    controller::{Context, ReconcilerAction},
+    Controller,
+};
+use prometheus::{default_registry, proto::MetricFamily};
 use serde::{Deserialize, Serialize};
 use tracing::{info, warn};
 
-use crate::{Error, objects};
-use crate::helpers::metrics::Metrics;
-use crate::helpers::state::State;
-use crate::objects::minecraft_proxy::MinecraftProxy;
-use crate::objects::minecraft_set::{MinecraftSet, MinecraftSetSpec};
+use crate::{
+    helpers::{metrics::Metrics, state::State},
+    objects,
+    objects::{
+        minecraft_proxy::MinecraftProxy,
+        minecraft_set::{MinecraftSet, MinecraftSetSpec},
+    },
+    Error,
+};
 
 /// a manager that owns a Controller
 #[derive(Clone)]
@@ -32,7 +37,9 @@ pub struct Manager {
 }
 
 impl Manager {
-    /** lifecycle interface for mycelium CRDs returns both (a `Manager`, a future to be awaited) `fn main()` will await the future, exiting when this future returns */
+    /// lifecycle interface for mycelium CRDs returns both (a `Manager`, a
+    /// future to be awaited) `fn main()` will await the future, exiting when
+    /// this future returns
     pub async fn new() -> (Self, BoxFuture<'static, ()>, BoxFuture<'static, ()>) {
         let client = Client::try_default().await.expect("create client");
         let metrics = Metrics::new();
@@ -43,30 +50,34 @@ impl Manager {
             client: client.clone(),
             metrics: metrics.clone(),
             state: state.clone(),
-            config: MyceliumConfig { forwarding_secret: "TODO-INSECURE".to_string() },
+            config: MyceliumConfig {
+                forwarding_secret: env::var("MYCELIUM_FW_TOKEN").unwrap(),
+            },
         });
         let proxy_context = Context::new(Data {
             client: client.clone(),
             metrics: metrics.clone(),
             state: state.clone(),
-            config: MyceliumConfig { forwarding_secret: "TODO-INSECURE".to_string() },
+            config: MyceliumConfig {
+                forwarding_secret: env::var("MYCELIUM_FW_TOKEN").unwrap(),
+            },
         });
 
         let mcsets = Api::<MinecraftSet>::all(client.clone());
         let mcproxies = Api::<MinecraftProxy>::all(client.clone());
         let statesets = Api::<StatefulSet>::all(client.clone());
         // ensure CRD is installed
-        mcsets
-            .list(&ListParams::default().limit(1))
-            .await
-            .expect("are the crds installed? install them with: mycelium-crdgen | kubectl apply -f -");
+        mcsets.list(&ListParams::default().limit(1)).await.expect(
+            "are the crds installed? install them with: mycelium-crdgen | kubectl apply -f -",
+        );
 
         // return the controller
         let set_controller = Controller::new(mcsets, ListParams::default())
             .owns(statesets.clone(), ListParams::default())
-            .run(crate::objects::minecraft_set::reconcile,
-                 error_policy,
-                 set_context,
+            .run(
+                crate::objects::minecraft_set::reconcile,
+                error_policy,
+                set_context,
             )
             .for_each(|res| async move {
                 match res {
@@ -78,9 +89,10 @@ impl Manager {
 
         let proxy_controller = Controller::new(mcproxies, ListParams::default())
             .owns(statesets.clone(), ListParams::default())
-            .run(crate::objects::minecraft_proxy::reconcile,
-                 error_policy,
-                 proxy_context,
+            .run(
+                crate::objects::minecraft_proxy::reconcile,
+                error_policy,
+                proxy_context,
             )
             .for_each(|res| async move {
                 match res {
@@ -90,7 +102,15 @@ impl Manager {
             })
             .boxed();
 
-        (Self { state, metrics, client: client.clone() }, set_controller, proxy_controller)
+        (
+            Self {
+                state,
+                metrics,
+                client: client.clone(),
+            },
+            set_controller,
+            proxy_controller,
+        )
     }
 
     /// metrics getter
@@ -106,21 +126,35 @@ impl Manager {
     /// velocity server getter
     pub async fn velocity(&self, env: String, tag: String, ns: String) -> Vec<VelocityServerEntry> {
         let mcsets: Api<MinecraftSet> = Api::namespaced(self.client.clone(), &ns);
-        let res = mcsets.list(
-            &ListParams::default()
-                .labels(&*format!("mycelium.njha.dev/proxy={}", tag))
-                .labels(&*format!("mycelium.njha.dev/env={}", env))
-        ).await.unwrap();
-        let servers: Vec<VelocityServerEntry> = res.items.iter().flat_map(|set: &MinecraftSet| {
-            let spec: &MinecraftSetSpec = &set.spec;
-            (0..spec.replicas).map(move |val| -> VelocityServerEntry {
-                VelocityServerEntry {
-                    address: format!("{0}-{1}.{0}.{2}.svc.cluster.local", set.metadata.name.clone().unwrap(), val, set.metadata.namespace.clone().unwrap()),
-                    host: None,
-                    name: set.metadata.name.clone().unwrap(),
-                }
-            }).into_iter()
-        }).collect();
+        let res = mcsets
+            .list(
+                &ListParams::default()
+                    .labels(&*format!("mycelium.njha.dev/proxy={}", tag))
+                    .labels(&*format!("mycelium.njha.dev/env={}", env)),
+            )
+            .await
+            .unwrap();
+        let servers: Vec<VelocityServerEntry> = res
+            .items
+            .iter()
+            .flat_map(|set: &MinecraftSet| {
+                let spec: &MinecraftSetSpec = &set.spec;
+                (0..spec.replicas)
+                    .map(move |val| -> VelocityServerEntry {
+                        VelocityServerEntry {
+                            address: format!(
+                                "{0}-{1}.{0}.{2}.svc.cluster.local",
+                                set.metadata.name.clone().unwrap(),
+                                val,
+                                set.metadata.namespace.clone().unwrap()
+                            ),
+                            host: spec.proxy.hostname.clone(),
+                            name: set.metadata.name.clone().unwrap(),
+                        }
+                    })
+                    .into_iter()
+            })
+            .collect();
         servers
     }
 }

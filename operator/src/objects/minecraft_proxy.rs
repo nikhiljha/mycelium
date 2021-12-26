@@ -1,25 +1,36 @@
-use std::{collections::HashMap, sync::Arc};
-use std::array::IntoIter;
-use std::collections::BTreeMap;
-use std::iter::FromIterator;
+use std::{
+    array::IntoIter,
+    collections::{BTreeMap, HashMap},
+    env,
+    iter::FromIterator,
+    sync::Arc,
+};
 
 use chrono::prelude::*;
 use futures::{future::BoxFuture, FutureExt, StreamExt};
-use k8s_openapi::api::apps::v1::{StatefulSet, StatefulSetSpec};
-use k8s_openapi::api::core::v1::{Container, EnvVar, PodSpec, PodTemplateSpec, Service, ServicePort, ServiceSpec};
-use k8s_openapi::apimachinery::pkg::apis::meta::v1::{LabelSelector, ObjectMeta, OwnerReference};
-use k8s_openapi::apimachinery::pkg::util::intstr::IntOrString;
+use k8s_openapi::{
+    api::{
+        apps::v1::{StatefulSet, StatefulSetSpec},
+        core::v1::{
+            Container, EnvVar, PodSpec, PodTemplateSpec, ResourceRequirements, Service,
+            ServicePort, ServiceSpec, Volume, VolumeMount,
+        },
+    },
+    apimachinery::pkg::{
+        apis::meta::v1::{LabelSelector, ObjectMeta, OwnerReference},
+        util::intstr::IntOrString,
+    },
+};
 use kube::{
     api::{Api, ListParams, Patch, PatchParams, ResourceExt},
     client::Client,
-    CustomResource,
-    Resource,
+    CustomResource, Resource,
 };
 use kube_runtime::controller::{Context, Controller, ReconcilerAction};
 use maplit::hashmap;
 use prometheus::{
-    default_registry, HistogramOpts, HistogramVec, IntCounter,
-    proto::MetricFamily, register_histogram_vec, register_int_counter,
+    default_registry, proto::MetricFamily, register_histogram_vec, register_int_counter,
+    HistogramOpts, HistogramVec, IntCounter,
 };
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -28,71 +39,99 @@ use tokio::{
     sync::RwLock,
     time::{Duration, Instant},
 };
-use tracing::{debug, error, event, field, info, instrument, Level, Span, trace, warn};
+use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, Span};
 
-use crate::{Error, Result};
-use crate::helpers::manager::Data;
-use crate::helpers::telemetry;
-use crate::objects::{ConfigOptions, make_volume, make_volume_mount};
+use crate::{
+    helpers::{manager::Data, telemetry},
+    objects::{make_volume, make_volume_mount, ConfigOptions, ContainerOptions, RunnerOptions},
+    Error, Result,
+};
+use crate::helpers::jarapi::get_download_url;
 
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
-#[kube(group = "mycelium.njha.dev", version = "v1alpha1", kind = "MinecraftProxy", plural = "minecraftproxies")]
+#[kube(
+    group = "mycelium.njha.dev",
+    version = "v1alpha1",
+    kind = "MinecraftProxy",
+    plural = "minecraftproxies"
+)]
 #[kube(shortname = "mcproxy", namespaced)]
 pub struct MinecraftProxySpec {
     pub replicas: i32,
     pub r#type: String,
-    pub config: Option<Vec<ConfigOptions>>,
-    pub plugins: Option<Vec<String>>,
+    pub proxy: RunnerOptions,
+    pub container: ContainerOptions,
 }
 
 #[instrument(skip(ctx), fields(trace_id))]
-pub async fn reconcile(mcset: MinecraftProxy, ctx: Context<Data>) -> Result<ReconcilerAction, Error> {
+pub async fn reconcile(
+    mcproxy: MinecraftProxy,
+    ctx: Context<Data>,
+) -> Result<ReconcilerAction, Error> {
     let trace_id = telemetry::get_trace_id();
     Span::current().record("trace_id", &field::display(&trace_id));
     let start = Instant::now();
 
     let client = ctx.get_ref().client.clone();
-    // TODO: This will panic on failure. Although it *should* never fail, this should still be fixed.
     ctx.get_ref().state.write().expect("last_event").last_event = Utc::now();
-    // TODO: This will panic on failure. Although it *should* never fail, this should still be fixed.
-    let name = ResourceExt::name(&mcset);
-    let ns = ResourceExt::namespace(&mcset).expect("failed to get mcset namespace");
-    let configs: Vec<ConfigOptions> = mcset.spec.config.clone().unwrap_or(vec![]);
+    let name = ResourceExt::name(&mcproxy);
+    let ns = ResourceExt::namespace(&mcproxy).expect("failed to get mcproxy namespace");
+    let configs: Vec<ConfigOptions> = mcproxy.spec.proxy.config.clone().unwrap_or(vec![]);
 
     let owner_reference = OwnerReference {
         controller: Some(true),
-        ..crate::objects::object_to_owner_reference::<MinecraftProxy>(mcset.metadata.clone())?
+        ..crate::objects::object_to_owner_reference::<MinecraftProxy>(mcproxy.metadata.clone())?
     };
-    let labels = BTreeMap::from_iter(
-        IntoIter::new([(String::from("mycelium.njha.dev/mcset"), name.clone())])
-    );
-    let mut plugins: Vec<String> = mcset.spec.plugins.clone().unwrap_or(vec![]);
+    let labels = BTreeMap::from_iter(IntoIter::new([(
+        String::from("mycelium.njha.dev/mcproxy"),
+        name.clone(),
+    )]));
+    let mut plugins: Vec<String> = mcproxy.spec.proxy.plugins.clone().unwrap_or(vec![]);
     // TODO: Point this at the jar cache, which is pointed at a CI server.
-    plugins.push(String::from("https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-plugin-0.1.0-all.jar"));
-    let tags: &BTreeMap<String, String> = mcset.labels();
+    plugins.push(format!(
+        "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-plugin-{}-all.jar",
+        env!("CARGO_PKG_VERSION"),
+    ));
+    let tags: BTreeMap<String, String> = mcproxy.labels().clone();
+    let mut volume_mounts: Vec<VolumeMount> = configs.iter().map(make_volume_mount).collect();
+    let mut volumes: Vec<Volume> = configs.iter().map(make_volume).collect();
+    if let Some(volume) = mcproxy.spec.container.volume {
+        let name = volume.name.clone();
+        volumes.push(volume);
+        volume_mounts.push(VolumeMount {
+            mount_path: "/data".to_string(),
+            name,
+            ..VolumeMount::default()
+        });
+    }
     let statefulset = StatefulSet {
         metadata: ObjectMeta {
             name: Some(name.clone()),
-            owner_references: vec![owner_reference.clone()],
+            owner_references: Some(vec![owner_reference.clone()]),
             ..ObjectMeta::default()
         },
         spec: Some(StatefulSetSpec {
             selector: LabelSelector {
-                match_labels: labels.clone(),
+                match_labels: Some(labels.clone()),
                 ..LabelSelector::default()
             },
-            replicas: Some(mcset.spec.replicas.clone()),
+            replicas: Some(mcproxy.spec.replicas),
             template: PodTemplateSpec {
                 metadata: Some(ObjectMeta {
-                    labels: labels.clone(),
+                    labels: Some(labels.clone()),
+                    annotations: Some(vec![("prometheus.io/port".into(), "8080".into()),
+                                           ("prometheus.io/scrape".into(), "true".into())]
+                        .into_iter().collect()),
                     ..ObjectMeta::default()
                 }),
                 spec: Some(PodSpec {
+                    security_context: mcproxy.spec.container.security_context,
                     containers: vec![Container {
                         name: name.clone(),
-                        image: Some(String::from("ci.njha.dev/mycelium/runner:latest")),
+                        image: Some(format!("harbor.ocf.berkeley.edu/mycelium/runner:{}", env!("CARGO_PKG_VERSION"))),
                         image_pull_policy: Some(String::from("IfNotPresent")),
-                        env: vec![EnvVar {
+                        resources: mcproxy.spec.container.resources,
+                        env: Some(vec![EnvVar {
                             name: String::from("MYCELIUM_RUNNER_KIND"),
                             value: Some(String::from("proxy")),
                             value_from: None,
@@ -110,21 +149,31 @@ pub async fn reconcile(mcset: MinecraftProxy, ctx: Context<Data>) -> Result<Reco
                             value_from: None,
                         }, EnvVar {
                             name: String::from("MYCELIUM_ENV"),
-                            value: Some(tags.get("mycelium.njha.dev/env").unwrap_or(&String::from("development")).clone()),
+                            value: Some(tags.get("mycelium.njha.dev/env")
+                                .unwrap_or(&String::from("development")).clone()),
                             value_from: None,
                         }, EnvVar {
                             name: String::from("MYCELIUM_PROXY"),
-                            value: Some(tags.get("mycelium.njha.dev/proxy").unwrap_or(&String::from("global")).clone()),
+                            value: Some(tags.get("mycelium.njha.dev/proxy")
+                                .unwrap_or(&String::from("global")).clone()),
                             value_from: None,
                         }, EnvVar {
                             name: String::from("MYCELIUM_ENDPOINT"),
-                            value: Some(String::from("host.minikube.internal:8080")),
+                            value: Some(env::var("MYCELIUM_ENDPOINT").unwrap()),
                             value_from: None,
-                        }],
-                        volume_mounts: configs.iter().map(make_volume_mount).collect(),
+                        }, EnvVar {
+                            name: String::from("MYCELIUM_RUNNER_JAR_URL"),
+                            value: Some(get_download_url(&mcproxy.spec.r#type, &mcproxy.spec.proxy.jar.version, &mcproxy.spec.proxy.jar.build)),
+                            value_from: None,
+                        }, EnvVar {
+                            name: String::from("MYCELIUM_JVM_OPTS"),
+                            value: mcproxy.spec.proxy.jvm,
+                            value_from: None,
+                        }]),
+                        volume_mounts: Some(configs.iter().map(make_volume_mount).collect()),
                         ..Container::default()
                     }],
-                    volumes: configs.iter().map(make_volume).collect(),
+                    volumes: Some(configs.iter().map(make_volume).collect()),
                     ..PodSpec::default()
                 }),
                 ..PodTemplateSpec::default()
@@ -137,17 +186,17 @@ pub async fn reconcile(mcset: MinecraftProxy, ctx: Context<Data>) -> Result<Reco
     let service = Service {
         metadata: ObjectMeta {
             name: Some(name.clone()),
-            owner_references: vec![owner_reference],
+            owner_references: Some(vec![owner_reference]),
             ..ObjectMeta::default()
         },
         spec: Some(ServiceSpec {
-            selector: labels,
-            ports: vec![ServicePort {
+            selector: Some(labels),
+            ports: Some(vec![ServicePort {
                 protocol: Some(String::from("TCP")),
                 port: 25565,
                 target_port: Some(IntOrString::Int(25577)),
                 ..ServicePort::default()
-            }],
+            }]),
             ..ServiceSpec::default()
         }),
         status: None,
@@ -159,8 +208,7 @@ pub async fn reconcile(mcset: MinecraftProxy, ctx: Context<Data>) -> Result<Reco
             &PatchParams::apply("mycelium.njha.dev"),
             &Patch::Apply(&statefulset),
         )
-        .await
-        .unwrap();
+        .await?;
 
     kube::Api::<Service>::namespaced(client.clone(), &ns)
         .patch(
@@ -168,8 +216,7 @@ pub async fn reconcile(mcset: MinecraftProxy, ctx: Context<Data>) -> Result<Reco
             &kube::api::PatchParams::apply("mycelium.njha.dev"),
             &kube::api::Patch::Apply(&service),
         )
-        .await
-        .unwrap();
+        .await?;
 
     let duration = start.elapsed().as_millis() as f64 / 1000.0;
     ctx.get_ref()
