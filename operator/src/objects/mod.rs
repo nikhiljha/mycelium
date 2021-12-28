@@ -13,11 +13,13 @@ use futures::{future::BoxFuture, FutureExt, StreamExt};
 use k8s_openapi::{
     api::{
         apps::v1::StatefulSet,
-        core::v1::{ConfigMapVolumeSource, ResourceRequirements, Volume, VolumeMount},
+        core::v1::{
+            ConfigMapVolumeSource, PersistentVolumeClaim, PodSecurityContext, ResourceRequirements,
+            SecurityContext, Volume, VolumeMount,
+        },
     },
     apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference},
 };
-use k8s_openapi::api::core::v1::{PersistentVolumeClaim, PodSecurityContext, SecurityContext};
 use kube::{api::ListParams, Api, Client, Resource};
 use kube_runtime::{
     controller::{Context, ReconcilerAction},

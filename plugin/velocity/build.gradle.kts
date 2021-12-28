@@ -1,14 +1,15 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 plugins {
-    kotlin("jvm") version "1.5.20"
-    kotlin("plugin.serialization") version "1.5.20"
-    kotlin("kapt") version "1.5.20"
-    id("com.github.johnrengelman.shadow") version "6.1.0"
+    kotlin("jvm") version "1.6.10"
+    kotlin("plugin.serialization") version "1.6.10"
+    kotlin("kapt") version "1.6.10"
+    id("com.github.johnrengelman.shadow")
 }
 
 group = "dev.njha.mycelium"
-version = "0.2.0"
+val myceliumVersion: String by rootProject.extra
+version = myceliumVersion
 
 repositories {
     mavenCentral()
@@ -32,6 +33,8 @@ dependencies {
     implementation("io.micrometer:micrometer-registry-prometheus:1.8.1")
     compileOnly("com.velocitypowered:velocity-api:3.1.0")
     kapt("com.velocitypowered:velocity-api:3.1.0")
+
+    implementation(project(":common"))
 }
 
 tasks.test {
@@ -39,9 +42,15 @@ tasks.test {
 }
 
 tasks.withType<KotlinCompile>() {
-    kotlinOptions.jvmTarget = "11"
+    kotlinOptions.jvmTarget = "16"
 }
 
 tasks.build {
     dependsOn("shadowJar")
+}
+
+tasks {
+    val shadowJar by getting(com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar::class) {
+        archiveFileName.set("mycelium-${project.name}-${project.version}.jar")
+    }
 }

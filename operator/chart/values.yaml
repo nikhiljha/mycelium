@@ -1,1 +1,14 @@
-# nothing is configurable
+images:
+  pullPolicy: IfNotPresent
+  operator: "harbor.ocf.berkeley.edu/mycelium/operator:{{ .Chart.AppVersion }}"
+  runner: "harbor.ocf.berkeley.edu/mycelium/runner:{{ .Chart.AppVersion }}"
+
+# resources for the operator ONLY -  server and proxy resources
+# are managed in the MinecraftSet and MinecraftProxy CRDs
+resources:
+  limits:
+    cpu: 200m
+    memory: 256Mi
+  requests:
+    cpu: 50m
+    memory: 100Mi

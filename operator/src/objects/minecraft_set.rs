@@ -41,11 +41,10 @@ use tokio::{
 use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, Span};
 
 use crate::{
-    helpers::{manager::Data, telemetry},
+    helpers::{jarapi::get_download_url, manager::Data, telemetry},
     objects::{make_volume, make_volume_mount, ConfigOptions, ContainerOptions, RunnerOptions},
     Error, Result,
 };
-use crate::helpers::jarapi::get_download_url;
 
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(
@@ -123,30 +122,40 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
                     security_context: mcset.spec.container.security_context,
                     containers: vec![Container {
                         name: name.clone(),
-                        image: Some(format!("harbor.ocf.berkeley.edu/mycelium/runner:{}", env!("CARGO_PKG_VERSION"))),
+                        image: Some(String::from(&ctx.get_ref().config.runner_image)),
                         image_pull_policy: Some(String::from("IfNotPresent")),
                         resources: mcset.spec.container.resources,
-                        env: Some(vec![EnvVar {
-                            name: String::from("MYCELIUM_RUNNER_KIND"),
-                            value: Some(String::from("game")),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_FW_TOKEN"),
-                            value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_PLUGINS"),
-                            value: Some(mcset.spec.game.plugins.unwrap_or(vec![]).join(",")),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_RUNNER_JAR_URL"),
-                            value: Some(get_download_url(&mcset.spec.r#type, &mcset.spec.game.jar.version, &mcset.spec.game.jar.build)),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_JVM_OPTS"),
-                            value: mcset.spec.game.jvm,
-                            value_from: None,
-                        }]),
+                        env: Some(vec![
+                            EnvVar {
+                                name: String::from("MYCELIUM_RUNNER_KIND"),
+                                value: Some(String::from("game")),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_FW_TOKEN"),
+                                value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_PLUGINS"),
+                                value: Some(mcset.spec.game.plugins.unwrap_or(vec![]).join(",")),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_RUNNER_JAR_URL"),
+                                value: Some(get_download_url(
+                                    &mcset.spec.r#type,
+                                    &mcset.spec.game.jar.version,
+                                    &mcset.spec.game.jar.build,
+                                )),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_JVM_OPTS"),
+                                value: mcset.spec.game.jvm,
+                                value_from: None,
+                            },
+                        ]),
                         volume_mounts: Some(volume_mounts),
                         ..Container::default()
                     }],

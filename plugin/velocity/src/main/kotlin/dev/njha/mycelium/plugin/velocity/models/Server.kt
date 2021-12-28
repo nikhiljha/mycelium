@@ -1,4 +1,4 @@
-package dev.njha.mycelium.velocity.models
+package dev.njha.mycelium.plugin.velocity.models
 
 import kotlinx.serialization.*
 import javax.annotation.Nullable

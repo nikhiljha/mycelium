@@ -4,7 +4,7 @@ metadata:
   labels:
     app: mycelium-operator
   name: mycelium-operator
-  namespace: mycelium
+  namespace: {{ .Release.Namespace }}
 spec:
   replicas: 1
   selector:
@@ -20,7 +20,8 @@ spec:
     spec:
       containers:
         - name: operator
-          image: "harbor.ocf.berkeley.edu/mycelium/operator:{{ .Chart.AppVersion }}"
+          imagePullPolicy: {{ .Values.images.pullPolicy }}
+          image: {{ tpl $.Values.images.operator $ }}
           env:
             - name: MYCELIUM_FW_TOKEN
               valueFrom:
@@ -28,7 +29,9 @@ spec:
                   name: mycelium-operator
                   key: forwarding_token
             - name: MYCELIUM_ENDPOINT
-              value: mycelium-operator.mycelium.svc.cluster.local:8080
+              value: mycelium-operator.{{ .Release.Namespace }}.svc.cluster.local:8080
+            - name: MYCELIUM_RUNNER_IMAGE
+              value: {{ tpl $.Values.images.runner $ }}
           ports:
             - containerPort: 8080
               name: api
@@ -38,11 +41,5 @@ spec:
               port: api
             initialDelaySeconds: 5
             periodSeconds: 5
-          resources:
-              limits:
-                cpu: 200m
-                memory: 256Mi
-              requests:
-                cpu: 50m
-                memory: 100Mi
+          resources: {{ .Values.resources }}
       serviceAccountName: mycelium-operator

@@ -360,6 +360,16 @@ dependencies = [
 ]
 
 [[package]]
+name = "combine"
+version = "4.6.2"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b2b2f5d0ee456f3928812dfc8c6d9a1d592b98678f6d56db9b0cd2b7bc6c8db5"
+dependencies = [
+ "bytes",
+ "memchr",
+]
+
+[[package]]
 name = "const_fn"
 version = "0.4.8"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -891,6 +901,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.10.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "a9a9d19fa1e79b6215ff29b9d6880b706147f16e9b1dbb1e4e5947b5b02bc5e3"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "0.4.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -955,6 +974,15 @@ dependencies = [
  "serde",
  "serde-value",
  "serde_json",
+]
+
+[[package]]
+name = "kstring"
+version = "1.0.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b310ccceade8121d7d77fee406160e457c2f4e7c7982d589da3499bc7ea4526"
+dependencies = [
+ "serde",
 ]
 
 [[package]]
@@ -1212,6 +1240,7 @@ dependencies = [
  "k8s-openapi",
  "kube",
  "kube-runtime",
+ "linked-hash-map",
  "maplit",
  "opentelemetry",
  "opentelemetry-otlp",
@@ -1223,9 +1252,11 @@ dependencies = [
  "serde_yaml",
  "thiserror",
  "tokio",
+ "toml_edit",
  "tracing",
  "tracing-opentelemetry",
  "tracing-subscriber",
+ "yaml-rust",
 ]
 
 [[package]]
@@ -1531,7 +1562,7 @@ checksum = "32d3ebd75ac2679c2af3a92246639f9fcc8a442ee420719cc4fe195b98dd5fa3"
 dependencies = [
  "bytes",
  "heck",
- "itertools",
+ "itertools 0.9.0",
  "log",
  "multimap",
  "petgraph",
@@ -1548,7 +1579,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "169a15f3008ecb5160cba7d37bcd690a7601b6d30cfb87a117d45e59d52af5d4"
 dependencies = [
  "anyhow",
- "itertools",
+ "itertools 0.9.0",
  "proc-macro2",
  "quote",
  "syn",
@@ -2231,6 +2262,18 @@ dependencies = [
  "pin-project-lite",
  "slab",
  "tokio",
+]
+
+[[package]]
+name = "toml_edit"
+version = "0.12.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "25321ef4c481482d05675fde4ac4bcfcf91f589de5ca266608e1340bf56d8c79"
+dependencies = [
+ "combine",
+ "indexmap",
+ "itertools 0.10.3",
+ "kstring",
 ]
 
 [[package]]

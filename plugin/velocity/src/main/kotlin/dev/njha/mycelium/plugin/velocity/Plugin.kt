@@ -1,17 +1,18 @@
-package dev.njha.mycelium.velocity
+package dev.njha.mycelium.plugin.velocity
 
 import com.google.gson.Gson
 import com.google.inject.Inject
-import com.typesafe.config.ConfigFactory
 import com.velocitypowered.api.event.Subscribe
+import com.velocitypowered.api.event.connection.DisconnectEvent
+import com.velocitypowered.api.event.connection.PostLoginEvent
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent
 import com.velocitypowered.api.plugin.Plugin
 import com.velocitypowered.api.plugin.annotation.DataDirectory
 import com.velocitypowered.api.proxy.ProxyServer
-import com.velocitypowered.api.proxy.config.ProxyConfig
 import com.velocitypowered.api.proxy.server.ServerInfo
-import dev.njha.mycelium.velocity.models.Server
+import dev.njha.mycelium.plugin.common.Monitoring
+import dev.njha.mycelium.plugin.velocity.models.Server
 import io.ktor.application.*
 import io.ktor.client.*
 import io.ktor.client.engine.*
@@ -28,27 +29,14 @@ import io.ktor.response.*
 import io.ktor.routing.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
-import io.micrometer.core.instrument.binder.jvm.JvmGcMetrics
-import io.micrometer.core.instrument.binder.jvm.JvmMemoryMetrics
-import io.micrometer.core.instrument.binder.system.ProcessorMetrics
-import io.micrometer.prometheus.PrometheusConfig
 import io.micrometer.prometheus.PrometheusMeterRegistry
 import kotlinx.coroutines.*
-import kotlinx.serialization.json.JsonNull.content
-import net.kyori.adventure.text.Component
-import net.kyori.adventure.text.TextComponent
-import net.kyori.adventure.text.TextReplacementConfig
 import org.slf4j.Logger
-import org.slf4j.LoggerFactory
 import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.nio.file.Path
 import java.util.concurrent.TimeUnit
-import java.util.regex.Pattern
-import kotlin.collections.ArrayList
 import kotlin.collections.HashMap
-import kotlin.collections.getOrElse
-import kotlin.collections.map
 import kotlin.collections.set
 import kotlin.reflect.full.declaredMemberFunctions
 import kotlin.reflect.jvm.isAccessible
@@ -57,7 +45,7 @@ import kotlin.reflect.jvm.isAccessible
 @Plugin(
     id = "mycelium",
     name = "Mycelium for Velocity",
-    version = "0.2.0",
+    version = "0.3.0",
     dependencies = [],
     url = "https://nikhiljha.com/projects/mycelium",
     description = "syncs state with the Mycelium operator",
@@ -69,6 +57,9 @@ class Plugin {
 
     @Inject
     lateinit var proxy: ProxyServer
+
+    @Inject
+    lateinit var registry: PrometheusMeterRegistry
 
     @Inject
     @DataDirectory
@@ -134,7 +125,7 @@ class Plugin {
                 val forcedHostsField = proxy.configuration::class.java.getDeclaredField("forcedHosts")
                 forcedHostsField.isAccessible = true
                 val fhClass = forcedHostsField.get(proxy.configuration)
-                val fhSetterField = fhClass::class.declaredMemberFunctions.find { it.name == "setForcedHosts" }?.let {
+                fhClass::class.declaredMemberFunctions.find { it.name == "setForcedHosts" }?.let {
                     it.isAccessible = true
                     it.call(fhClass, forcedHosts)
                 }
@@ -145,52 +136,19 @@ class Plugin {
     }
 
     @Subscribe
+    fun onPlayerJoin(event: PostLoginEvent) {
+        registry.gauge("velocity.playerCount", proxy.playerCount)
+    }
+
+    @Subscribe
+    fun onPlayerLeave(event: DisconnectEvent) {
+        registry.gauge("velocity.playerCount", proxy.playerCount)
+    }
+
+    @Subscribe
     fun onStart(event: ProxyInitializeEvent) {
-        val ews = embeddedServer(Netty, environment = applicationEngineEnvironment {
-            log = LoggerFactory.getLogger("mycelium")
-            config = HoconApplicationConfig(ConfigFactory.load())
-
-            module {
-                install(ContentNegotiation) {
-                    gson()
-                }
-                val appMicrometerRegistry = PrometheusMeterRegistry(PrometheusConfig.DEFAULT)
-                install(MicrometerMetrics) {
-                    meterBinders = listOf(
-                        JvmMemoryMetrics(),
-                        JvmGcMetrics()
-                    )
-                    registry = appMicrometerRegistry
-                    registry.gauge("velocity.playerCount", proxy.playerCount)
-                }
-                routing {
-                    get("/") {
-                        call.respondText(proxy.version.version, ContentType.Text.Plain)
-                    }
-
-                    get("/server/list") {
-                        call.respond(proxy.allServers.map { rs ->
-                            Server(address = rs.serverInfo.address.hostString, name = rs.serverInfo.name, host = "")
-                        })
-                    }
-
-                    get("/metrics") {
-                        call.respond(appMicrometerRegistry.scrape())
-                    }
-
-                    post("/server/sync") {
-                        sync()
-                        call.respondText("ok", ContentType.Text.Plain)
-                    }
-                }
-            }
-
-            connector {
-                port = 8080
-                host = "0.0.0.0"
-            }
-        })
-        ews.start(wait = false)
+        registry = Monitoring().initMonitoring()
+        registry.gauge("velocity.playerCount", proxy.playerCount)
 
         // sync the servers from the operator now, and every 5 minutes
         proxy.scheduler

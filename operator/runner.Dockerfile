@@ -5,7 +5,7 @@ COPY ./Cargo.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
 COPY ./src ./src
 COPY ./defaults ./defaults
-RUN cargo build --release
+RUN cargo build --release --bin mycelium-runner
 
 
 FROM openjdk:17-slim-bullseye

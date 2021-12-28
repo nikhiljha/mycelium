@@ -42,11 +42,10 @@ use tokio::{
 use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, Span};
 
 use crate::{
-    helpers::{manager::Data, telemetry},
+    helpers::{jarapi::get_download_url, manager::Data, telemetry},
     objects::{make_volume, make_volume_mount, ConfigOptions, ContainerOptions, RunnerOptions},
     Error, Result,
 };
-use crate::helpers::jarapi::get_download_url;
 
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(
@@ -119,57 +118,82 @@ pub async fn reconcile(
             template: PodTemplateSpec {
                 metadata: Some(ObjectMeta {
                     labels: Some(labels.clone()),
-                    annotations: Some(vec![("prometheus.io/port".into(), "8080".into()),
-                                           ("prometheus.io/scrape".into(), "true".into())]
-                        .into_iter().collect()),
+                    annotations: Some(
+                        vec![
+                            ("prometheus.io/port".into(), "8080".into()),
+                            ("prometheus.io/scrape".into(), "true".into()),
+                        ]
+                        .into_iter()
+                        .collect(),
+                    ),
                     ..ObjectMeta::default()
                 }),
                 spec: Some(PodSpec {
                     security_context: mcproxy.spec.container.security_context,
                     containers: vec![Container {
                         name: name.clone(),
-                        image: Some(format!("harbor.ocf.berkeley.edu/mycelium/runner:{}", env!("CARGO_PKG_VERSION"))),
+                        image: Some(String::from(&ctx.get_ref().config.runner_image)),
                         image_pull_policy: Some(String::from("IfNotPresent")),
                         resources: mcproxy.spec.container.resources,
-                        env: Some(vec![EnvVar {
-                            name: String::from("MYCELIUM_RUNNER_KIND"),
-                            value: Some(String::from("proxy")),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_FW_TOKEN"),
-                            value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_PLUGINS"),
-                            value: Some(plugins.join(",")),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("K8S_NAMESPACE"),
-                            value: Some(ns.clone()),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_ENV"),
-                            value: Some(tags.get("mycelium.njha.dev/env")
-                                .unwrap_or(&String::from("development")).clone()),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_PROXY"),
-                            value: Some(tags.get("mycelium.njha.dev/proxy")
-                                .unwrap_or(&String::from("global")).clone()),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_ENDPOINT"),
-                            value: Some(env::var("MYCELIUM_ENDPOINT").unwrap()),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_RUNNER_JAR_URL"),
-                            value: Some(get_download_url(&mcproxy.spec.r#type, &mcproxy.spec.proxy.jar.version, &mcproxy.spec.proxy.jar.build)),
-                            value_from: None,
-                        }, EnvVar {
-                            name: String::from("MYCELIUM_JVM_OPTS"),
-                            value: mcproxy.spec.proxy.jvm,
-                            value_from: None,
-                        }]),
+                        env: Some(vec![
+                            EnvVar {
+                                name: String::from("MYCELIUM_RUNNER_KIND"),
+                                value: Some(String::from("proxy")),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_FW_TOKEN"),
+                                value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_PLUGINS"),
+                                value: Some(plugins.join(",")),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("K8S_NAMESPACE"),
+                                value: Some(ns.clone()),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_ENV"),
+                                value: Some(
+                                    tags.get("mycelium.njha.dev/env")
+                                        .unwrap_or(&String::from("development"))
+                                        .clone(),
+                                ),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_PROXY"),
+                                value: Some(
+                                    tags.get("mycelium.njha.dev/proxy")
+                                        .unwrap_or(&String::from("global"))
+                                        .clone(),
+                                ),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_ENDPOINT"),
+                                value: Some(env::var("MYCELIUM_ENDPOINT").unwrap()),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_RUNNER_JAR_URL"),
+                                value: Some(get_download_url(
+                                    &mcproxy.spec.r#type,
+                                    &mcproxy.spec.proxy.jar.version,
+                                    &mcproxy.spec.proxy.jar.build,
+                                )),
+                                value_from: None,
+                            },
+                            EnvVar {
+                                name: String::from("MYCELIUM_JVM_OPTS"),
+                                value: mcproxy.spec.proxy.jvm,
+                                value_from: None,
+                            },
+                        ]),
                         volume_mounts: Some(configs.iter().map(make_volume_mount).collect()),
                         ..Container::default()
                     }],

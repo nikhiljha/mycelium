@@ -3,7 +3,7 @@ WORKDIR ./volume
 COPY ./Cargo.toml ./Cargo.toml
 COPY ./Cargo.lock ./Cargo.lock
 COPY ./src ./src
-RUN cargo build --release
+RUN cargo build --release --bin mycelium-operator
 
 FROM gcr.io/distroless/static:nonroot
 COPY --from=builder /volume/volume/target/x86_64-unknown-linux-musl/release/mycelium-operator /app/

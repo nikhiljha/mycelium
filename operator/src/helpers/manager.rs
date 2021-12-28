@@ -52,6 +52,7 @@ impl Manager {
             state: state.clone(),
             config: MyceliumConfig {
                 forwarding_secret: env::var("MYCELIUM_FW_TOKEN").unwrap(),
+                runner_image: env::var("MYCELIUM_RUNNER_IMAGE").unwrap(),
             },
         });
         let proxy_context = Context::new(Data {
@@ -60,6 +61,7 @@ impl Manager {
             state: state.clone(),
             config: MyceliumConfig {
                 forwarding_secret: env::var("MYCELIUM_FW_TOKEN").unwrap(),
+                runner_image: env::var("MYCELIUM_RUNNER_IMAGE").unwrap(),
             },
         });
 
@@ -180,6 +182,8 @@ pub struct VelocityServerEntry {
 pub struct MyceliumConfig {
     /// velocity forwarding secret
     pub(crate) forwarding_secret: String,
+    /// runner image
+    pub(crate) runner_image: String,
 }
 
 #[derive(Clone)]

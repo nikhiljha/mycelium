@@ -3,7 +3,7 @@ apiVersion: v1
 kind: ServiceAccount
 metadata:
   name: mycelium-operator
-  namespace: mycelium
+  namespace: {{ .Release.Namespace }}
 automountServiceAccountToken: true
 
 ---
@@ -11,12 +11,14 @@ kind: ClusterRole
 apiVersion: rbac.authorization.k8s.io/v1
 metadata:
   name: mycelium-operator
-# TODO: rbac should not be all * :grimace:
 rules:
-  - apiGroups: ["*"]
+  - apiGroups: ["mycelium.njha.dev"]
     resources: ["*"]
-    verbs:
-      - "*"
+    verbs: ["*"]
+  # TODO: Can we restrict this to only children of mycelium CRDs?
+  - apiGroups: ["*"]
+    resources: ["statefulsets", "services", "events"]
+    verbs: ["*"]
 
 ---
 kind: ClusterRoleBinding
@@ -25,7 +27,7 @@ metadata:
   name: mycelium-operator
 subjects:
   - kind: ServiceAccount
-    namespace: mycelium
+    namespace: {{ .Release.Namespace }}
     name: mycelium-operator
 roleRef:
   kind: ClusterRole

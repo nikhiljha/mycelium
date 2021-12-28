@@ -1,0 +1,6 @@
+main: Plugin
+name: Mycelium
+version: 0.3.0
+api-version: "1.18"
+author: Nikhil Jha
+description: build Minecraft networks at planet scale
