@@ -1,13 +1,13 @@
-use std::env;
-use toml_edit::{Document, Table, Array, value};
-use std::fs::{read_to_string, create_dir_all};
-use std::fs::File;
-use std::io::{Write, Error};
-use std::path::{Path};
-use std::process::{Command, Stdio};
-use yaml_rust::{YamlLoader, YamlEmitter, Yaml};
-use linked_hash_map::LinkedHashMap;
+use std::{env, fs::{create_dir_all, read_to_string, File}, io::{Error, Write}, path::Path, process::{Command, Stdio}, thread};
 
+use linked_hash_map::LinkedHashMap;
+use nix::libc::pid_t;
+use nix::sys::signal;
+use nix::unistd::Pid;
+use signal_hook::consts::{SIGINT, SIGTERM};
+use signal_hook::iterator::Signals;
+use toml_edit::{value, Array, Document, Table};
+use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
 
 fn main() -> Result<(), Error> {
     let config_path = env::var("MYCELIUM_CONFIG_PATH").unwrap_or(String::from("/config"));
@@ -25,7 +25,14 @@ fn main() -> Result<(), Error> {
     // copy all the files from config_path to data_path
     // TODO: rewrite properly without Command
     Command::new("sh")
-        .args(&["-c", &format!("cp {}/* {}", config_path.to_str().unwrap(), data_path.to_str().unwrap())])
+        .args(&[
+            "-c",
+            &format!(
+                "cp {}/* {}",
+                config_path.to_str().unwrap(),
+                data_path.to_str().unwrap()
+            ),
+        ])
         .output()
         .expect("failed to copy configuration");
 
@@ -33,7 +40,7 @@ fn main() -> Result<(), Error> {
     match server_kind.as_str() {
         "game" => configure_game(fw_token, data_path),
         "proxy" => configure_proxy(fw_token, data_path),
-        _ => panic!("env::var(MYCELIUM_RUNNER_KIND) must be 'game' or 'proxy'")
+        _ => panic!("env::var(MYCELIUM_RUNNER_KIND) must be 'game' or 'proxy'"),
     }?;
 
     // download plugins
@@ -43,7 +50,7 @@ fn main() -> Result<(), Error> {
     match server_kind.as_str() {
         "game" => download_run_game(data_path),
         "proxy" => download_run_proxy(data_path),
-        _ => panic!("if you're seeing this, all hope is lost, the end times are here")
+        _ => panic!("if you're seeing this, all hope is lost, the end times are here"),
     }?;
 
     Ok(())
@@ -63,21 +70,36 @@ fn download_file(url: &str, path: &str) {
 
 fn run_jar(cwd: &str, file: &str) {
     let jvm_opts = env::var("MYCELIUM_JVM_OPTS").unwrap_or("".into());
-    let args: Vec<&str> = jvm_opts.split_terminator(' ').chain(vec!["-jar", file].into_iter()).collect();
+    let args: Vec<&str> = jvm_opts
+        .split_terminator(' ')
+        .chain(vec!["-jar", file].into_iter())
+        .collect();
 
-    Command::new("java")
+    let mut signals = Signals::new(&[SIGTERM, SIGINT]).unwrap();
+    let mut minecraft = Command::new("java")
         .args(args)
         .current_dir(cwd)
+        .stdin(Stdio::inherit())
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
-        .expect("run jar")
-        .wait()
+        .expect("run jar");
+
+    let id = minecraft.id().clone();
+    thread::spawn(move || {
+        for _ in signals.forever() {
+            println!("[runner] Caught interrupt, sending sigterm to java...");
+            signal::kill(Pid::from_raw(id as pid_t), nix::sys::signal::Signal::SIGTERM)
+                .expect("can't kill java");
+        }
+    });
+
+    minecraft.wait()
         .expect("wait for jar");
 }
 
 fn download_plugins(data_path: &Path) -> Result<(), Error> {
-    let plugins_str = env::var("MYCELIUM_PLUGINS").unwrap();
+    let plugins_str = env::var("MYCELIUM_PLUGINS").unwrap_or("".into());
     let plugins = plugins_str.split_terminator(",");
     let plugin_dir_path = data_path.join("plugins/");
     let plugin_dir = plugin_dir_path.to_str().unwrap();
@@ -125,7 +147,10 @@ fn configure_game(token: String, data_path: &Path) -> Result<(), Error> {
     let mut yaml_doc = loaded[0].as_hash().unwrap().clone();
 
     // modify the config
-    let mut settings = yaml_doc[&Yaml::from_str("settings")].as_hash().unwrap().clone();
+    let mut settings = yaml_doc[&Yaml::from_str("settings")]
+        .as_hash()
+        .unwrap()
+        .clone();
     let mut velocity_map = LinkedHashMap::new();
     velocity_map.insert(Yaml::from_str("enabled"), Yaml::Boolean(true));
     velocity_map.insert(Yaml::from_str("online-mode"), Yaml::Boolean(true));
