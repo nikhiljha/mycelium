@@ -21,6 +21,7 @@ use k8s_openapi::{
         util::intstr::IntOrString,
     },
 };
+use k8s_openapi::api::core::v1::{EnvVarSource, ObjectFieldSelector};
 use kube::{
     api::{Api, ListParams, Patch, PatchParams, ResourceExt},
     client::Client,
@@ -64,6 +65,7 @@ pub struct MinecraftProxySpec {
     pub r#type: String,
     pub runner: RunnerOptions,
     pub container: ContainerOptions,
+    pub selector: Option<LabelSelector>,
 }
 
 #[instrument(skip(ctx), fields(trace_id))]
@@ -82,7 +84,6 @@ pub async fn reconcile(
         controller: Some(true),
         ..crate::objects::object_to_owner_reference::<MinecraftProxy>(mcproxy.metadata.clone())?
     };
-    let tags: BTreeMap<String, String> = mcproxy.labels().clone();
 
     generic_reconcile(
         vec![
@@ -108,24 +109,6 @@ pub async fn reconcile(
                 value_from: None,
             },
             EnvVar {
-                name: String::from("MYCELIUM_ENV"),
-                value: Some(
-                    tags.get("mycelium.njha.dev/env")
-                        .unwrap_or(&String::from("development"))
-                        .clone(),
-                ),
-                value_from: None,
-            },
-            EnvVar {
-                name: String::from("MYCELIUM_PROXY"),
-                value: Some(
-                    tags.get("mycelium.njha.dev/proxy")
-                        .unwrap_or(&String::from("cluster"))
-                        .clone(),
-                ),
-                value_from: None,
-            },
-            EnvVar {
                 name: String::from("MYCELIUM_ENDPOINT"),
                 value: Some(env::var("MYCELIUM_ENDPOINT").unwrap()),
                 value_from: None,
@@ -141,8 +124,25 @@ pub async fn reconcile(
             },
             EnvVar {
                 name: String::from("K8S_NAMESPACE"),
-                value: Some(ns.clone()),
-                value_from: None,
+                value: None,
+                value_from: Some(EnvVarSource {
+                    field_ref: Some(ObjectFieldSelector {
+                        api_version: None,
+                        field_path: "metadata.namespace".to_string()
+                    }),
+                    ..EnvVarSource::default()
+                }),
+            },
+            EnvVar {
+                name: String::from("K8S_NAME"),
+                value: Some(name.clone()),
+                value_from: Some(EnvVarSource {
+                    field_ref: Some(ObjectFieldSelector {
+                        api_version: None,
+                        field_path: "metadata.name".to_string()
+                    }),
+                    ..EnvVarSource::default()
+                }),
             },
         ],
         IntOrString::Int(25577),

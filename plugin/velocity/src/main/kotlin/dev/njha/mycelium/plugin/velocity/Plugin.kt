@@ -69,10 +69,9 @@ class Plugin {
         // TODO: Generate a TLS cert for the API server
         HttpClient(Java).use { httpClient ->
             val endpoint = System.getenv("MYCELIUM_ENDPOINT") ?: "localhost:8181"
-            val tag = System.getenv("MYCELIUM_PROXY") ?: "global"
-            val env = System.getenv("MYCELIUM_ENV") ?: "development"
             val namespace = System.getenv("K8S_NAMESPACE") ?: "default"
-            val url = "http://$endpoint/servers/$namespace/$env/$tag"
+            val name = System.getenv("K8S_NAME") ?: "proxy"
+            val url = "http://$endpoint/servers/$namespace/$name"
             try {
                 // if no env set, assume development and attempt to connect to localhost
                 val response = httpClient.get<HttpResponse>(url) {

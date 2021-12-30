@@ -24,6 +24,7 @@ use crate::{
     },
     Error,
 };
+use crate::objects::minecraft_proxy::MinecraftProxySpec;
 
 /// a manager that owns a Controller
 #[derive(Clone)]
@@ -126,38 +127,36 @@ impl Manager {
     }
 
     /// velocity server getter
-    pub async fn velocity(&self, env: String, tag: String, ns: String) -> Vec<VelocityServerEntry> {
-        let mcsets: Api<MinecraftSet> = Api::namespaced(self.client.clone(), &ns);
-        let res = mcsets
-            .list(
-                &ListParams::default()
-                    .labels(&*format!("mycelium.njha.dev/proxy={}", tag))
-                    .labels(&*format!("mycelium.njha.dev/env={}", env)),
-            )
-            .await
-            .unwrap();
-        let servers: Vec<VelocityServerEntry> = res
-            .items
-            .iter()
-            .flat_map(|set: &MinecraftSet| {
-                let spec: &MinecraftSetSpec = &set.spec;
-                (0..spec.replicas)
-                    .map(move |val| -> VelocityServerEntry {
-                        VelocityServerEntry {
-                            address: format!(
-                                "{0}-{1}.{0}.{2}.svc.cluster.local",
-                                set.metadata.name.clone().unwrap(),
-                                val,
-                                set.metadata.namespace.clone().unwrap()
-                            ),
-                            host: spec.proxy.hostname.clone(),
-                            name: set.metadata.name.clone().unwrap(),
-                        }
-                    })
-                    .into_iter()
-            })
-            .collect();
-        servers
+    pub async fn get_sets(&self, ns: String, name: String) -> Result<Vec<VelocityServerEntry>, Error> {
+        let proxy_api: Api<MinecraftProxy> = Api::namespaced(self.client.clone(), &ns);
+        let proxy: MinecraftProxy = proxy_api.get(&name).await?;
+        let proxy_spec: MinecraftProxySpec = proxy.spec;
+
+        let label_selector = proxy_spec.selector.unwrap_or_default()
+            .match_labels.unwrap_or_default()
+            .iter().map(|i| format!("{}={}", i.0, i.1))
+            .collect::<Vec<String>>().join(",");
+
+        let mcset_api: Api<MinecraftSet> = Api::namespaced(self.client.clone(), &ns);
+        let objects = mcset_api.list(&ListParams::default().labels(&label_selector)).await?;
+
+        Ok(objects.items.iter().flat_map(|set: &MinecraftSet| {
+            let spec: &MinecraftSetSpec = &set.spec;
+            (0..spec.replicas)
+                .map(move |val| -> VelocityServerEntry {
+                    VelocityServerEntry {
+                        address: format!(
+                            "{0}-{1}.{0}.{2}.svc.cluster.local",
+                            set.metadata.name.clone().unwrap(),
+                            val,
+                            set.metadata.namespace.clone().unwrap()
+                        ),
+                        host: spec.proxy.hostname.clone(),
+                        name: set.metadata.name.clone().unwrap(),
+                    }
+                })
+                .into_iter()
+        }).collect())
     }
 }
 
