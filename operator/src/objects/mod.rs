@@ -1,5 +1,6 @@
 use std::{
-    collections::HashMap,
+    array::IntoIter,
+    collections::{BTreeMap, HashMap},
     fmt::Debug,
     iter::Map,
     ops::Range,
@@ -12,15 +13,22 @@ use chrono::{DateTime, Utc};
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use k8s_openapi::{
     api::{
-        apps::v1::StatefulSet,
+        apps::v1::{StatefulSet, StatefulSetSpec},
         core::v1::{
-            ConfigMapVolumeSource, PersistentVolumeClaim, PodSecurityContext, ResourceRequirements,
-            SecurityContext, Volume, VolumeMount,
+            ConfigMapVolumeSource, Container, EnvVar, PersistentVolumeClaim, PodSecurityContext,
+            PodSpec, PodTemplateSpec, ResourceRequirements, SecurityContext, Service, ServicePort,
+            ServiceSpec, Volume, VolumeMount,
         },
     },
-    apimachinery::pkg::apis::meta::v1::{ObjectMeta, OwnerReference},
+    apimachinery::pkg::{
+        apis::meta::v1::{LabelSelector, ObjectMeta, OwnerReference},
+        util::intstr::IntOrString,
+    },
 };
-use kube::{api::ListParams, Api, Client, Resource};
+use kube::{
+    api::{ListParams, Patch, PatchParams},
+    Api, Client, Resource, ResourceExt,
+};
 use kube_runtime::{
     controller::{Context, ReconcilerAction},
     Controller,
@@ -34,7 +42,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, Span};
 
 use crate::{
-    helpers::{metrics::Metrics, state::State},
+    helpers::{manager::Data, metrics::Metrics, state::State},
     objects::minecraft_set::MinecraftSetSpec,
     Error, MinecraftProxy, MinecraftSet,
 };
@@ -103,4 +111,117 @@ pub fn object_to_owner_reference<K: Resource<DynamicType = ()>>(
         uid: meta.uid.unwrap(),
         ..OwnerReference::default()
     })
+}
+
+pub async fn generic_reconcile(
+    env: Option<Vec<EnvVar>>,
+    port: IntOrString,
+    name: String,
+    ns: String,
+    ctx: Context<Data>,
+    configs: Vec<ConfigOptions>,
+    owner_reference: OwnerReference,
+    volume: Option<Volume>,
+    shortname: String,
+    replicas: i32,
+    sec_context: Option<PodSecurityContext>,
+    resources: Option<ResourceRequirements>,
+) -> Result<(), Error> {
+    let client = ctx.get_ref().client.clone();
+    // Note: This will only error with PoisonError, which is unrecoverable and so we
+    // should panic.
+    ctx.get_ref().state.write().expect("last_event").last_event = Utc::now();
+
+    let labels = BTreeMap::from_iter(IntoIter::new([(
+        format!("mycelium.njha.dev/{}", shortname),
+        name.clone(),
+    )]));
+    let mut volume_mounts: Vec<VolumeMount> = configs.iter().map(make_volume_mount).collect();
+    let mut volumes: Vec<Volume> = configs.iter().map(make_volume).collect();
+    if let Some(volume) = volume {
+        let name = volume.name.clone();
+        volumes.push(volume);
+        volume_mounts.push(VolumeMount {
+            mount_path: "/data".to_string(),
+            name,
+            ..VolumeMount::default()
+        });
+    }
+    let statefulset = StatefulSet {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            owner_references: Some(vec![owner_reference.clone()]),
+            ..ObjectMeta::default()
+        },
+        spec: Some(StatefulSetSpec {
+            selector: LabelSelector {
+                match_labels: Some(labels.clone()),
+                ..LabelSelector::default()
+            },
+            service_name: name.clone(),
+            replicas: Some(replicas),
+            template: PodTemplateSpec {
+                metadata: Some(ObjectMeta {
+                    labels: Some(labels.clone()),
+                    ..ObjectMeta::default()
+                }),
+                spec: Some(PodSpec {
+                    security_context: sec_context,
+                    containers: vec![Container {
+                        name: name.clone(),
+                        image: Some(String::from(&ctx.get_ref().config.runner_image)),
+                        image_pull_policy: Some(String::from("IfNotPresent")),
+                        resources,
+                        env,
+                        volume_mounts: Some(volume_mounts),
+                        ..Container::default()
+                    }],
+                    volumes: Some(volumes),
+                    ..PodSpec::default()
+                }),
+                ..PodTemplateSpec::default()
+            },
+            ..StatefulSetSpec::default()
+        }),
+        status: None,
+    };
+
+    let service = Service {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            owner_references: Some(vec![owner_reference]),
+            ..ObjectMeta::default()
+        },
+        spec: Some(ServiceSpec {
+            // https://kubernetes.io/docs/concepts/services-networking/service/#headless-services
+            cluster_ip: Some(String::from("None")),
+            selector: Some(labels),
+            ports: Some(vec![ServicePort {
+                protocol: Some(String::from("TCP")),
+                port: 25565,
+                target_port: Some(port),
+                ..ServicePort::default()
+            }]),
+            ..ServiceSpec::default()
+        }),
+        status: None,
+    };
+
+    kube::Api::<StatefulSet>::namespaced(client.clone(), &ns)
+        .patch(
+            &name,
+            &PatchParams::apply("mycelium.njha.dev"),
+            &Patch::Apply(&statefulset),
+        )
+        .await?;
+
+    kube::Api::<Service>::namespaced(client.clone(), &ns)
+        .patch(
+            &name,
+            &PatchParams::apply("mycelium.njha.dev"),
+            &Patch::Apply(&service),
+        )
+        .await?;
+
+    Ok(())
 }

@@ -42,7 +42,10 @@ use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, 
 
 use crate::{
     helpers::{jarapi::get_download_url, manager::Data, telemetry},
-    objects::{make_volume, make_volume_mount, ConfigOptions, ContainerOptions, RunnerOptions},
+    objects::{
+        generic_reconcile, make_volume, make_volume_mount, ConfigOptions, ContainerOptions,
+        RunnerOptions,
+    },
     Error, Result,
 };
 
@@ -73,138 +76,59 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
     Span::current().record("trace_id", &field::display(&trace_id));
     let start = Instant::now();
 
-    let client = ctx.get_ref().client.clone();
-    // Note: This will only error with PoisonError, which is unrecoverable and so we
-    // should panic.
-    ctx.get_ref().state.write().expect("last_event").last_event = Utc::now();
     let name = ResourceExt::name(&mcset);
     let ns = ResourceExt::namespace(&mcset).expect("failed to get mcset namespace");
     let configs: Vec<ConfigOptions> = mcset.spec.game.config.unwrap_or(vec![]);
-
     let owner_reference = OwnerReference {
         controller: Some(true),
         ..crate::objects::object_to_owner_reference::<MinecraftSet>(mcset.metadata.clone())?
     };
-    let labels = BTreeMap::from_iter(IntoIter::new([(
-        String::from("mycelium.njha.dev/mcset"),
+
+    generic_reconcile(
+        Some(vec![
+            EnvVar {
+                name: String::from("MYCELIUM_RUNNER_KIND"),
+                value: Some(String::from("game")),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_FW_TOKEN"),
+                value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_PLUGINS"),
+                value: Some(mcset.spec.game.plugins.unwrap_or(vec![]).join(",")),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_RUNNER_JAR_URL"),
+                value: Some(get_download_url(
+                    &mcset.spec.r#type,
+                    &mcset.spec.game.jar.version,
+                    &mcset.spec.game.jar.build,
+                )),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_JVM_OPTS"),
+                value: mcset.spec.game.jvm,
+                value_from: None,
+            },
+        ]),
+        IntOrString::Int(25565),
         name.clone(),
-    )]));
-    let mut volume_mounts: Vec<VolumeMount> = configs.iter().map(make_volume_mount).collect();
-    let mut volumes: Vec<Volume> = configs.iter().map(make_volume).collect();
-    if let Some(volume) = mcset.spec.container.volume {
-        let name = volume.name.clone();
-        volumes.push(volume);
-        volume_mounts.push(VolumeMount {
-            mount_path: "/data".to_string(),
-            name,
-            ..VolumeMount::default()
-        });
-    }
-    let statefulset = StatefulSet {
-        metadata: ObjectMeta {
-            name: Some(name.clone()),
-            owner_references: Some(vec![owner_reference.clone()]),
-            ..ObjectMeta::default()
-        },
-        spec: Some(StatefulSetSpec {
-            selector: LabelSelector {
-                match_labels: Some(labels.clone()),
-                ..LabelSelector::default()
-            },
-            service_name: name.clone(),
-            replicas: Some(mcset.spec.replicas.clone()),
-            template: PodTemplateSpec {
-                metadata: Some(ObjectMeta {
-                    labels: Some(labels.clone()),
-                    ..ObjectMeta::default()
-                }),
-                spec: Some(PodSpec {
-                    security_context: mcset.spec.container.security_context,
-                    containers: vec![Container {
-                        name: name.clone(),
-                        image: Some(String::from(&ctx.get_ref().config.runner_image)),
-                        image_pull_policy: Some(String::from("IfNotPresent")),
-                        resources: mcset.spec.container.resources,
-                        env: Some(vec![
-                            EnvVar {
-                                name: String::from("MYCELIUM_RUNNER_KIND"),
-                                value: Some(String::from("game")),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_FW_TOKEN"),
-                                value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_PLUGINS"),
-                                value: Some(mcset.spec.game.plugins.unwrap_or(vec![]).join(",")),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_RUNNER_JAR_URL"),
-                                value: Some(get_download_url(
-                                    &mcset.spec.r#type,
-                                    &mcset.spec.game.jar.version,
-                                    &mcset.spec.game.jar.build,
-                                )),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_JVM_OPTS"),
-                                value: mcset.spec.game.jvm,
-                                value_from: None,
-                            },
-                        ]),
-                        volume_mounts: Some(volume_mounts),
-                        ..Container::default()
-                    }],
-                    volumes: Some(volumes),
-                    ..PodSpec::default()
-                }),
-                ..PodTemplateSpec::default()
-            },
-            ..StatefulSetSpec::default()
-        }),
-        status: None,
-    };
-
-    let service = Service {
-        metadata: ObjectMeta {
-            name: Some(name.clone()),
-            owner_references: Some(vec![owner_reference]),
-            ..ObjectMeta::default()
-        },
-        spec: Some(ServiceSpec {
-            // https://kubernetes.io/docs/concepts/services-networking/service/#headless-services
-            cluster_ip: Some(String::from("None")),
-            selector: Some(labels),
-            ports: Some(vec![ServicePort {
-                protocol: Some(String::from("TCP")),
-                port: 25565,
-                target_port: Some(IntOrString::Int(25565)),
-                ..ServicePort::default()
-            }]),
-            ..ServiceSpec::default()
-        }),
-        status: None,
-    };
-
-    kube::Api::<StatefulSet>::namespaced(client.clone(), &ns)
-        .patch(
-            &name,
-            &PatchParams::apply("mycelium.njha.dev"),
-            &Patch::Apply(&statefulset),
-        )
-        .await?;
-
-    kube::Api::<Service>::namespaced(client.clone(), &ns)
-        .patch(
-            &name,
-            &kube::api::PatchParams::apply("mycelium.njha.dev"),
-            &kube::api::Patch::Apply(&service),
-        )
-        .await?;
+        ns.clone(),
+        ctx.clone(),
+        configs,
+        owner_reference,
+        mcset.spec.container.volume,
+        "mcset".to_string(),
+        mcset.spec.replicas.clone(),
+        mcset.spec.container.security_context,
+        mcset.spec.container.resources,
+    )
+    .await?;
 
     let duration = start.elapsed().as_millis() as f64 / 1000.0;
     ctx.get_ref()

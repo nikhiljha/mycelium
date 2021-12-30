@@ -43,7 +43,10 @@ use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, 
 
 use crate::{
     helpers::{jarapi::get_download_url, manager::Data, telemetry},
-    objects::{make_volume, make_volume_mount, ConfigOptions, ContainerOptions, RunnerOptions},
+    objects::{
+        generic_reconcile, make_volume, make_volume_mount, ConfigOptions, ContainerOptions,
+        RunnerOptions,
+    },
     Error, Result,
 };
 
@@ -71,175 +74,98 @@ pub async fn reconcile(
     Span::current().record("trace_id", &field::display(&trace_id));
     let start = Instant::now();
 
-    let client = ctx.get_ref().client.clone();
-    ctx.get_ref().state.write().expect("last_event").last_event = Utc::now();
     let name = ResourceExt::name(&mcproxy);
     let ns = ResourceExt::namespace(&mcproxy).expect("failed to get mcproxy namespace");
     let configs: Vec<ConfigOptions> = mcproxy.spec.proxy.config.clone().unwrap_or(vec![]);
-
     let owner_reference = OwnerReference {
         controller: Some(true),
         ..crate::objects::object_to_owner_reference::<MinecraftProxy>(mcproxy.metadata.clone())?
     };
-    let labels = BTreeMap::from_iter(IntoIter::new([(
-        String::from("mycelium.njha.dev/mcproxy"),
-        name.clone(),
-    )]));
-    let mut plugins: Vec<String> = mcproxy.spec.proxy.plugins.clone().unwrap_or(vec![]);
-    // TODO: Point this at the jar cache, which is pointed at a CI server.
-    plugins.push(format!(
-        "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-plugin-{}-all.jar",
-        env!("CARGO_PKG_VERSION"),
-    ));
     let tags: BTreeMap<String, String> = mcproxy.labels().clone();
-    let mut volume_mounts: Vec<VolumeMount> = configs.iter().map(make_volume_mount).collect();
-    let mut volumes: Vec<Volume> = configs.iter().map(make_volume).collect();
-    if let Some(volume) = mcproxy.spec.container.volume {
-        let name = volume.name.clone();
-        volumes.push(volume);
-        volume_mounts.push(VolumeMount {
-            mount_path: "/data".to_string(),
-            name,
-            ..VolumeMount::default()
-        });
-    }
-    let statefulset = StatefulSet {
-        metadata: ObjectMeta {
-            name: Some(name.clone()),
-            owner_references: Some(vec![owner_reference.clone()]),
-            ..ObjectMeta::default()
-        },
-        spec: Some(StatefulSetSpec {
-            selector: LabelSelector {
-                match_labels: Some(labels.clone()),
-                ..LabelSelector::default()
+
+    generic_reconcile(
+        Some(vec![
+            EnvVar {
+                name: String::from("MYCELIUM_RUNNER_KIND"),
+                value: Some(String::from("proxy")),
+                value_from: None,
             },
-            replicas: Some(mcproxy.spec.replicas),
-            template: PodTemplateSpec {
-                metadata: Some(ObjectMeta {
-                    labels: Some(labels.clone()),
-                    annotations: Some(
-                        vec![
-                            ("prometheus.io/port".into(), "8080".into()),
-                            ("prometheus.io/scrape".into(), "true".into()),
-                        ]
-                        .into_iter()
-                        .collect(),
-                    ),
-                    ..ObjectMeta::default()
-                }),
-                spec: Some(PodSpec {
-                    security_context: mcproxy.spec.container.security_context,
-                    containers: vec![Container {
-                        name: name.clone(),
-                        image: Some(String::from(&ctx.get_ref().config.runner_image)),
-                        image_pull_policy: Some(String::from("IfNotPresent")),
-                        resources: mcproxy.spec.container.resources,
-                        env: Some(vec![
-                            EnvVar {
-                                name: String::from("MYCELIUM_RUNNER_KIND"),
-                                value: Some(String::from("proxy")),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_FW_TOKEN"),
-                                value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_PLUGINS"),
-                                value: Some(plugins.join(",")),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("K8S_NAMESPACE"),
-                                value: Some(ns.clone()),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_ENV"),
-                                value: Some(
-                                    tags.get("mycelium.njha.dev/env")
-                                        .unwrap_or(&String::from("development"))
-                                        .clone(),
-                                ),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_PROXY"),
-                                value: Some(
-                                    tags.get("mycelium.njha.dev/proxy")
-                                        .unwrap_or(&String::from("global"))
-                                        .clone(),
-                                ),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_ENDPOINT"),
-                                value: Some(env::var("MYCELIUM_ENDPOINT").unwrap()),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_RUNNER_JAR_URL"),
-                                value: Some(get_download_url(
-                                    &mcproxy.spec.r#type,
-                                    &mcproxy.spec.proxy.jar.version,
-                                    &mcproxy.spec.proxy.jar.build,
-                                )),
-                                value_from: None,
-                            },
-                            EnvVar {
-                                name: String::from("MYCELIUM_JVM_OPTS"),
-                                value: mcproxy.spec.proxy.jvm,
-                                value_from: None,
-                            },
-                        ]),
-                        volume_mounts: Some(configs.iter().map(make_volume_mount).collect()),
-                        ..Container::default()
-                    }],
-                    volumes: Some(configs.iter().map(make_volume).collect()),
-                    ..PodSpec::default()
-                }),
-                ..PodTemplateSpec::default()
+            EnvVar {
+                name: String::from("MYCELIUM_FW_TOKEN"),
+                value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
+                value_from: None,
             },
-            ..StatefulSetSpec::default()
-        }),
-        status: None,
-    };
-
-    let service = Service {
-        metadata: ObjectMeta {
-            name: Some(name.clone()),
-            owner_references: Some(vec![owner_reference]),
-            ..ObjectMeta::default()
-        },
-        spec: Some(ServiceSpec {
-            selector: Some(labels),
-            ports: Some(vec![ServicePort {
-                protocol: Some(String::from("TCP")),
-                port: 25565,
-                target_port: Some(IntOrString::Int(25577)),
-                ..ServicePort::default()
-            }]),
-            ..ServiceSpec::default()
-        }),
-        status: None,
-    };
-
-    kube::Api::<StatefulSet>::namespaced(client.clone(), &ns)
-        .patch(
-            &name,
-            &PatchParams::apply("mycelium.njha.dev"),
-            &Patch::Apply(&statefulset),
-        )
-        .await?;
-
-    kube::Api::<Service>::namespaced(client.clone(), &ns)
-        .patch(
-            &name,
-            &kube::api::PatchParams::apply("mycelium.njha.dev"),
-            &kube::api::Patch::Apply(&service),
-        )
+            EnvVar {
+                name: String::from("MYCELIUM_PLUGINS"),
+                value: Some(mcproxy
+                    .spec
+                    .proxy
+                    .plugins
+                    .clone()
+                    .unwrap_or(vec![])
+                    .into_iter()
+                    .chain(vec![format!(
+                        "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-plugin-{}-all.jar",
+                        env!("CARGO_PKG_VERSION"),
+                    )].into_iter())
+                    .collect::<Vec<String>>().join(",")),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("K8S_NAMESPACE"),
+                value: Some(ns.clone()),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_ENV"),
+                value: Some(
+                    tags.get("mycelium.njha.dev/env")
+                        .unwrap_or(&String::from("development"))
+                        .clone(),
+                ),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_PROXY"),
+                value: Some(
+                    tags.get("mycelium.njha.dev/proxy")
+                        .unwrap_or(&String::from("global"))
+                        .clone(),
+                ),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_ENDPOINT"),
+                value: Some(env::var("MYCELIUM_ENDPOINT").unwrap()),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_RUNNER_JAR_URL"),
+                value: Some(get_download_url(
+                    &mcproxy.spec.r#type,
+                    &mcproxy.spec.proxy.jar.version,
+                    &mcproxy.spec.proxy.jar.build,
+                )),
+                value_from: None,
+            },
+            EnvVar {
+                name: String::from("MYCELIUM_JVM_OPTS"),
+                value: mcproxy.spec.proxy.jvm,
+                value_from: None,
+            },
+        ]),
+        IntOrString::Int(25577),
+        name.clone(),
+        ns.clone(),
+        ctx.clone(),
+        configs,
+        owner_reference,
+        mcproxy.spec.container.volume,
+        "mcproxy".to_string(),
+        mcproxy.spec.replicas,
+        mcproxy.spec.container.security_context,
+        mcproxy.spec.container.resources,
+    )
         .await?;
 
     let duration = start.elapsed().as_millis() as f64 / 1000.0;
