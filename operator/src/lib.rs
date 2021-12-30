@@ -15,6 +15,12 @@ pub enum Error {
     #[error("ReqwestError: {0}")]
     ReqwestError(#[from] reqwest::Error),
 
+    #[error("VarError: {0}")]
+    VarError(#[from] std::env::VarError),
+
+    #[error("MyceliumError: {0}")]
+    MyceliumError(String),
+
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }

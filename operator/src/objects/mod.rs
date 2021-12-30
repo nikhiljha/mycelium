@@ -46,6 +46,7 @@ use crate::{
     objects::minecraft_set::MinecraftSetSpec,
     Error, MinecraftProxy, MinecraftSet,
 };
+use crate::Error::MyceliumError;
 
 pub mod minecraft_proxy;
 pub mod minecraft_set;
@@ -57,9 +58,12 @@ pub struct ConfigOptions {
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub struct ContainerOptions {
     pub resources: Option<ResourceRequirements>,
     pub volume: Option<Volume>,
+    pub volume_claim_template: Option<PersistentVolumeClaim>,
+    pub node_selector: Option<BTreeMap<String, String>>,
     pub security_context: Option<PodSecurityContext>,
 }
 
@@ -107,25 +111,23 @@ pub fn object_to_owner_reference<K: Resource<DynamicType = ()>>(
     Ok(OwnerReference {
         api_version: K::api_version(&()).to_string(),
         kind: K::kind(&()).to_string(),
-        name: meta.name.unwrap(),
-        uid: meta.uid.unwrap(),
+        name: meta.name.ok_or(MyceliumError("failed to get name".into()))?,
+        uid: meta.uid.ok_or(MyceliumError("failed to get uid".into()))?,
         ..OwnerReference::default()
     })
 }
 
 pub async fn generic_reconcile(
-    env: Option<Vec<EnvVar>>,
+    env: Vec<EnvVar>,
     port: IntOrString,
     name: String,
     ns: String,
     ctx: Context<Data>,
-    configs: Vec<ConfigOptions>,
     owner_reference: OwnerReference,
-    volume: Option<Volume>,
     shortname: String,
     replicas: i32,
-    sec_context: Option<PodSecurityContext>,
-    resources: Option<ResourceRequirements>,
+    container: ContainerOptions,
+    runner: RunnerOptions,
 ) -> Result<(), Error> {
     let client = ctx.get_ref().client.clone();
     // Note: This will only error with PoisonError, which is unrecoverable and so we
@@ -136,9 +138,10 @@ pub async fn generic_reconcile(
         format!("mycelium.njha.dev/{}", shortname),
         name.clone(),
     )]));
+    let configs = runner.config.unwrap_or(vec![]);
     let mut volume_mounts: Vec<VolumeMount> = configs.iter().map(make_volume_mount).collect();
     let mut volumes: Vec<Volume> = configs.iter().map(make_volume).collect();
-    if let Some(volume) = volume {
+    if let Some(volume) = container.volume {
         let name = volume.name.clone();
         volumes.push(volume);
         volume_mounts.push(VolumeMount {
@@ -147,6 +150,19 @@ pub async fn generic_reconcile(
             ..VolumeMount::default()
         });
     }
+
+    let env: Vec<EnvVar> = vec![
+        EnvVar {
+            name: String::from("MYCELIUM_JVM_OPTS"),
+            value: runner.jvm,
+            value_from: None,
+        },
+        EnvVar {
+            name: String::from("MYCELIUM_FW_TOKEN"),
+            value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
+            value_from: None,
+        },
+    ].into_iter().chain(env).collect();
     let statefulset = StatefulSet {
         metadata: ObjectMeta {
             name: Some(name.clone()),
@@ -166,13 +182,13 @@ pub async fn generic_reconcile(
                     ..ObjectMeta::default()
                 }),
                 spec: Some(PodSpec {
-                    security_context: sec_context,
+                    security_context: container.security_context,
                     containers: vec![Container {
                         name: name.clone(),
                         image: Some(String::from(&ctx.get_ref().config.runner_image)),
                         image_pull_policy: Some(String::from("IfNotPresent")),
-                        resources,
-                        env,
+                        resources: container.resources,
+                        env: Some(env),
                         volume_mounts: Some(volume_mounts),
                         ..Container::default()
                     }],

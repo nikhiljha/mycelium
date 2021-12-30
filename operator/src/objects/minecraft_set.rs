@@ -48,18 +48,19 @@ use crate::{
     },
     Error, Result,
 };
+use crate::Error::MyceliumError;
 
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(
     group = "mycelium.njha.dev",
-    version = "v1alpha1",
+    version = "v1beta1",
     kind = "MinecraftSet"
 )]
 #[kube(shortname = "mcset", namespaced)]
 pub struct MinecraftSetSpec {
     pub replicas: i32,
     pub r#type: String,
-    pub game: RunnerOptions,
+    pub runner: RunnerOptions,
     pub container: ContainerOptions,
     pub proxy: ProxyOptions,
 }
@@ -77,56 +78,44 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
     let start = Instant::now();
 
     let name = ResourceExt::name(&mcset);
-    let ns = ResourceExt::namespace(&mcset).expect("failed to get mcset namespace");
-    let configs: Vec<ConfigOptions> = mcset.spec.game.config.unwrap_or(vec![]);
+    let ns = ResourceExt::namespace(&mcset)
+        .ok_or(MyceliumError("failed to get namespace".into()))?;
     let owner_reference = OwnerReference {
         controller: Some(true),
         ..crate::objects::object_to_owner_reference::<MinecraftSet>(mcset.metadata.clone())?
     };
 
     generic_reconcile(
-        Some(vec![
+        vec![
             EnvVar {
                 name: String::from("MYCELIUM_RUNNER_KIND"),
                 value: Some(String::from("game")),
                 value_from: None,
             },
             EnvVar {
-                name: String::from("MYCELIUM_FW_TOKEN"),
-                value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
-                value_from: None,
-            },
-            EnvVar {
                 name: String::from("MYCELIUM_PLUGINS"),
-                value: Some(mcset.spec.game.plugins.unwrap_or(vec![]).join(",")),
+                value: Some(mcset.spec.runner.plugins.clone().unwrap_or(vec![]).join(",")),
                 value_from: None,
             },
             EnvVar {
                 name: String::from("MYCELIUM_RUNNER_JAR_URL"),
                 value: Some(get_download_url(
                     &mcset.spec.r#type,
-                    &mcset.spec.game.jar.version,
-                    &mcset.spec.game.jar.build,
+                    &mcset.spec.runner.jar.version,
+                    &mcset.spec.runner.jar.build,
                 )),
                 value_from: None,
             },
-            EnvVar {
-                name: String::from("MYCELIUM_JVM_OPTS"),
-                value: mcset.spec.game.jvm,
-                value_from: None,
-            },
-        ]),
+        ],
         IntOrString::Int(25565),
         name.clone(),
         ns.clone(),
         ctx.clone(),
-        configs,
         owner_reference,
-        mcset.spec.container.volume,
         "mcset".to_string(),
         mcset.spec.replicas.clone(),
-        mcset.spec.container.security_context,
-        mcset.spec.container.resources,
+        mcset.spec.container,
+        mcset.spec.runner,
     )
     .await?;
 

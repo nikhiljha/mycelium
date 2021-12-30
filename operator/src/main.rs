@@ -42,12 +42,12 @@ async fn servers(c: Data<Manager>, path: web::Path<(String, String, String)>) ->
 #[actix_rt::main]
 async fn main() -> Result<(), Error> {
     // Validate config
-    env::var("MYCELIUM_FW_TOKEN").unwrap();
-    env::var("MYCELIUM_ENDPOINT").unwrap();
+    env::var("MYCELIUM_FW_TOKEN")?;
+    env::var("MYCELIUM_ENDPOINT")?;
 
     #[cfg(feature = "telemetry")]
     let otlp_endpoint =
-        std::env::var("OPENTELEMETRY_ENDPOINT_URL").expect("otel tracing collector not configured");
+        std::env::var("OPENTELEMETRY_ENDPOINT_URL")?;
 
     #[cfg(feature = "telemetry")]
     let tracer = opentelemetry_otlp::new_pipeline()

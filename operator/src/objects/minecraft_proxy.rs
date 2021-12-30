@@ -49,11 +49,12 @@ use crate::{
     },
     Error, Result,
 };
+use crate::Error::MyceliumError;
 
 #[derive(CustomResource, Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[kube(
     group = "mycelium.njha.dev",
-    version = "v1alpha1",
+    version = "v1beta1",
     kind = "MinecraftProxy",
     plural = "minecraftproxies"
 )]
@@ -61,7 +62,7 @@ use crate::{
 pub struct MinecraftProxySpec {
     pub replicas: i32,
     pub r#type: String,
-    pub proxy: RunnerOptions,
+    pub runner: RunnerOptions,
     pub container: ContainerOptions,
 }
 
@@ -75,8 +76,8 @@ pub async fn reconcile(
     let start = Instant::now();
 
     let name = ResourceExt::name(&mcproxy);
-    let ns = ResourceExt::namespace(&mcproxy).expect("failed to get mcproxy namespace");
-    let configs: Vec<ConfigOptions> = mcproxy.spec.proxy.config.clone().unwrap_or(vec![]);
+    let ns = ResourceExt::namespace(&mcproxy)
+        .ok_or(MyceliumError("failed to get namespace".into()))?;
     let owner_reference = OwnerReference {
         controller: Some(true),
         ..crate::objects::object_to_owner_reference::<MinecraftProxy>(mcproxy.metadata.clone())?
@@ -84,22 +85,17 @@ pub async fn reconcile(
     let tags: BTreeMap<String, String> = mcproxy.labels().clone();
 
     generic_reconcile(
-        Some(vec![
+        vec![
             EnvVar {
                 name: String::from("MYCELIUM_RUNNER_KIND"),
                 value: Some(String::from("proxy")),
                 value_from: None,
             },
             EnvVar {
-                name: String::from("MYCELIUM_FW_TOKEN"),
-                value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
-                value_from: None,
-            },
-            EnvVar {
                 name: String::from("MYCELIUM_PLUGINS"),
                 value: Some(mcproxy
                     .spec
-                    .proxy
+                    .runner
                     .plugins
                     .clone()
                     .unwrap_or(vec![])
@@ -109,11 +105,6 @@ pub async fn reconcile(
                         env!("CARGO_PKG_VERSION"),
                     )].into_iter())
                     .collect::<Vec<String>>().join(",")),
-                value_from: None,
-            },
-            EnvVar {
-                name: String::from("K8S_NAMESPACE"),
-                value: Some(ns.clone()),
                 value_from: None,
             },
             EnvVar {
@@ -129,7 +120,7 @@ pub async fn reconcile(
                 name: String::from("MYCELIUM_PROXY"),
                 value: Some(
                     tags.get("mycelium.njha.dev/proxy")
-                        .unwrap_or(&String::from("global"))
+                        .unwrap_or(&String::from("cluster"))
                         .clone(),
                 ),
                 value_from: None,
@@ -143,28 +134,26 @@ pub async fn reconcile(
                 name: String::from("MYCELIUM_RUNNER_JAR_URL"),
                 value: Some(get_download_url(
                     &mcproxy.spec.r#type,
-                    &mcproxy.spec.proxy.jar.version,
-                    &mcproxy.spec.proxy.jar.build,
+                    &mcproxy.spec.runner.jar.version,
+                    &mcproxy.spec.runner.jar.build,
                 )),
                 value_from: None,
             },
             EnvVar {
-                name: String::from("MYCELIUM_JVM_OPTS"),
-                value: mcproxy.spec.proxy.jvm,
+                name: String::from("K8S_NAMESPACE"),
+                value: Some(ns.clone()),
                 value_from: None,
             },
-        ]),
+        ],
         IntOrString::Int(25577),
         name.clone(),
         ns.clone(),
         ctx.clone(),
-        configs,
         owner_reference,
-        mcproxy.spec.container.volume,
         "mcproxy".to_string(),
         mcproxy.spec.replicas,
-        mcproxy.spec.container.security_context,
-        mcproxy.spec.container.resources,
+        mcproxy.spec.container,
+        mcproxy.spec.runner,
     )
         .await?;
 
