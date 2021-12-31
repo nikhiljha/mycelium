@@ -65,7 +65,7 @@ pub struct MinecraftSetSpec {
     pub runner: RunnerOptions,
 
     /// options for Kubernetes
-    pub container: ContainerOptions,
+    pub container: Option<ContainerOptions>,
 
     /// options to pass to proxies that select this MinecraftSet
     pub proxy: ProxyOptions,
@@ -111,7 +111,7 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
         owner_reference,
         "mcset".to_string(),
         mcset.spec.replicas.clone(),
-        mcset.spec.container,
+        mcset.spec.container.unwrap_or_default(),
         mcset.spec.runner,
     )
     .await?;

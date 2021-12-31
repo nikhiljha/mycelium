@@ -24,6 +24,7 @@ spec:
               properties:
                 container:
                   description: options for Kubernetes
+                  nullable: true
                   properties:
                     nodeSelector:
                       additionalProperties:
@@ -1478,7 +1479,6 @@ spec:
                     - jar
                   type: object
               required:
-                - container
                 - proxy
                 - replicas
                 - runner
@@ -1517,6 +1517,7 @@ spec:
               properties:
                 container:
                   description: options for Kubernetes
+                  nullable: true
                   properties:
                     nodeSelector:
                       additionalProperties:
@@ -2993,14 +2994,9 @@ spec:
                       description: "matchLabels is a map of {key,value} pairs. A single {key,value} in the matchLabels map is equivalent to an element of matchExpressions, whose key field is \"key\", the operator is \"In\", and the values array contains only \"value\". The requirements are ANDed."
                       type: object
                   type: object
-                type:
-                  description: "type of proxy (currently only `velocity` is supported)"
-                  type: string
               required:
-                - container
                 - replicas
                 - runner
-                - type
               type: object
           required:
             - spec

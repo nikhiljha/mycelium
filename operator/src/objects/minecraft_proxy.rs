@@ -64,14 +64,11 @@ pub struct MinecraftProxySpec {
     /// number of identical proxies to create
     pub replicas: i32,
 
-    /// type of proxy (currently only `velocity` is supported)
-    pub r#type: String,
-
     /// options for the server runner
     pub runner: RunnerOptions,
 
     /// options for Kubernetes
-    pub container: ContainerOptions,
+    pub container: Option<ContainerOptions>,
 
     /// what MinecraftSets to add to this proxy (only matchLabels is supported)
     pub selector: Option<LabelSelector>,
@@ -152,7 +149,7 @@ pub async fn reconcile(
         owner_reference,
         "mcproxy".to_string(),
         mcproxy.spec.replicas,
-        mcproxy.spec.container,
+        mcproxy.spec.container.unwrap_or_default(),
         mcproxy.spec.runner,
     )
         .await?;
