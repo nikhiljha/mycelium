@@ -33,7 +33,7 @@ async fn state(c: Data<Manager>, _req: HttpRequest) -> impl Responder {
 }
 
 #[get("/servers/{ns}/{name}")]
-async fn servers(c: Data<Manager>, path: web::Path<(String, String)>) -> Result<impl Responder, Error> {
+async fn servers(c: Data<Manager>, path: web::Path<(String, String)>) -> actix_web::Result<impl Responder> {
     let inner = path.into_inner();
     let vec = c.get_sets(inner.0, inner.1).await?;
     Ok(HttpResponse::Ok().json(json!(vec)))

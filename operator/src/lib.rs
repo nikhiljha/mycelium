@@ -1,8 +1,10 @@
 #![warn(rust_2018_idioms)]
 #![allow(unused_imports)]
 
+use std::fmt::{Display, Formatter};
 pub use objects::{minecraft_proxy::MinecraftProxy, minecraft_set::MinecraftSet};
 use thiserror::Error;
+use thiserror::private::DisplayAsDisplay;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -24,6 +26,8 @@ pub enum Error {
     #[error(transparent)]
     Other(#[from] anyhow::Error),
 }
+
+impl actix_web::error::ResponseError for Error {}
 
 pub type Result<T, E = Error> = std::result::Result<T, E>;
 
