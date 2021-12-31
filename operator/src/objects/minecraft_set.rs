@@ -58,10 +58,19 @@ use crate::Error::MyceliumError;
 )]
 #[kube(shortname = "mcset", namespaced)]
 pub struct MinecraftSetSpec {
+    /// number of identical servers to create
     pub replicas: i32,
+
+    /// type of proxy (currently only `paper` is supported)
     pub r#type: String,
+
+    /// options for the server runner
     pub runner: RunnerOptions,
+
+    /// options for Kubernetes
     pub container: ContainerOptions,
+
+    /// options to pass to proxies that select this MinecraftSet
     pub proxy: ProxyOptions,
 }
 
