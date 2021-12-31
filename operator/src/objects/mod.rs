@@ -53,31 +53,53 @@ pub mod minecraft_set;
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 pub struct ConfigOptions {
+    /// name of configmap to mount
     pub name: String,
+
+    /// location relative to the Minecraft root to mount the configmap
     pub path: String,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ContainerOptions {
+    /// resource requirements for the java pod
     pub resources: Option<ResourceRequirements>,
+
+    /// volume to mount to the minecraft root (only useful for replicas = 1)
     pub volume: Option<Volume>,
+
+    /// volume claim template to use for the minecraft root (overrides the volume field if set)
     pub volume_claim_template: Option<PersistentVolumeClaim>,
+
+    /// nodes that the java pod can be scheduled on
     pub node_selector: Option<BTreeMap<String, String>>,
+
+    /// pod security context for the minecraft server (should be restrictive)
     pub security_context: Option<PodSecurityContext>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 pub struct RunnerOptions {
+    /// server jar to download and run
     pub jar: VersionDouble,
+
+    /// space separated options to pass to the JVM (i.e. -Dsomething=something -Dother=other)
     pub jvm: Option<String>,
+
+    /// configmaps to mount inside the minecraft root
     pub config: Option<Vec<ConfigOptions>>,
+
+    /// list of plugin URLs to download on server start
     pub plugins: Option<Vec<String>>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 pub struct VersionDouble {
+    /// version according to the PaperMC API
     pub version: String,
+
+    /// build according to the PaperMC API
     pub build: String,
 }
 
@@ -141,7 +163,17 @@ pub async fn generic_reconcile(
     let configs = runner.config.unwrap_or(vec![]);
     let mut volume_mounts: Vec<VolumeMount> = configs.iter().map(make_volume_mount).collect();
     let mut volumes: Vec<Volume> = configs.iter().map(make_volume).collect();
-    if let Some(volume) = container.volume {
+    let mut tpl_volume: Vec<PersistentVolumeClaim> = vec![];
+
+    if let Some(volume_tpl) = container.volume_claim_template {
+        volume_mounts.push(VolumeMount {
+            mount_path: "/data".to_string(),
+            name: volume_tpl.metadata.clone().name
+                .ok_or(MyceliumError("volumeClaimTemplate name".into()))?,
+            ..VolumeMount::default()
+        });
+        tpl_volume.push(volume_tpl);
+    } else if let Some(volume) = container.volume {
         let name = volume.name.clone();
         volumes.push(volume);
         volume_mounts.push(VolumeMount {
@@ -197,6 +229,7 @@ pub async fn generic_reconcile(
                 }),
                 ..PodTemplateSpec::default()
             },
+            volume_claim_templates: Some(tpl_volume),
             ..StatefulSetSpec::default()
         }),
         status: None,

@@ -23,14 +23,16 @@ spec:
             spec:
               properties:
                 container:
+                  description: options for Kubernetes
                   properties:
                     nodeSelector:
                       additionalProperties:
                         type: string
+                      description: nodes that the java pod can be scheduled on
                       nullable: true
                       type: object
                     resources:
-                      description: ResourceRequirements describes the compute resource requirements.
+                      description: resource requirements for the java pod
                       nullable: true
                       properties:
                         limits:
@@ -47,7 +49,7 @@ spec:
                           type: object
                       type: object
                     securityContext:
-                      description: PodSecurityContext holds pod-level security attributes and common container settings. Some fields are also present in container.securityContext.  Field values of container.securityContext take precedence over field values of PodSecurityContext.
+                      description: pod security context for the minecraft server (should be restrictive)
                       nullable: true
                       properties:
                         fsGroup:
@@ -136,7 +138,7 @@ spec:
                           type: object
                       type: object
                     volume:
-                      description: Volume represents a named volume in a pod that may be accessed by any container in the pod.
+                      description: volume to mount to the minecraft root (only useful for replicas = 1)
                       nullable: true
                       properties:
                         awsElasticBlockStore:
@@ -1144,7 +1146,7 @@ spec:
                         - name
                       type: object
                     volumeClaimTemplate:
-                      description: "PersistentVolumeClaim is a user's request for and claim to a persistent volume"
+                      description: volume claim template to use for the minecraft root (overrides the volume field if set)
                       nullable: true
                       properties:
                         apiVersion:
@@ -1415,6 +1417,7 @@ spec:
                       type: object
                   type: object
                 proxy:
+                  description: options to pass to proxies that select this MinecraftSet
                   properties:
                     hostname:
                       description: configures the proxy to create a forced host for the MinecraftSet
@@ -1422,16 +1425,21 @@ spec:
                       type: string
                   type: object
                 replicas:
+                  description: number of identical servers to create
                   format: int32
                   type: integer
                 runner:
+                  description: options for the server runner
                   properties:
                     config:
+                      description: configmaps to mount inside the minecraft root
                       items:
                         properties:
                           name:
+                            description: name of configmap to mount
                             type: string
                           path:
+                            description: location relative to the Minecraft root to mount the configmap
                             type: string
                         required:
                           - name
@@ -1440,19 +1448,24 @@ spec:
                       nullable: true
                       type: array
                     jar:
+                      description: server jar to download and run
                       properties:
                         build:
+                          description: build according to the PaperMC API
                           type: string
                         version:
+                          description: version according to the PaperMC API
                           type: string
                       required:
                         - build
                         - version
                       type: object
                     jvm:
+                      description: space separated options to pass to the JVM (i.e. -Dsomething=something -Dother=other)
                       nullable: true
                       type: string
                     plugins:
+                      description: list of plugin URLs to download on server start
                       items:
                         type: string
                       nullable: true
@@ -1461,6 +1474,7 @@ spec:
                     - jar
                   type: object
                 type:
+                  description: "type of proxy (currently only `paper` is supported)"
                   type: string
               required:
                 - container
@@ -1502,14 +1516,16 @@ spec:
             spec:
               properties:
                 container:
+                  description: options for Kubernetes
                   properties:
                     nodeSelector:
                       additionalProperties:
                         type: string
+                      description: nodes that the java pod can be scheduled on
                       nullable: true
                       type: object
                     resources:
-                      description: ResourceRequirements describes the compute resource requirements.
+                      description: resource requirements for the java pod
                       nullable: true
                       properties:
                         limits:
@@ -1526,7 +1542,7 @@ spec:
                           type: object
                       type: object
                     securityContext:
-                      description: PodSecurityContext holds pod-level security attributes and common container settings. Some fields are also present in container.securityContext.  Field values of container.securityContext take precedence over field values of PodSecurityContext.
+                      description: pod security context for the minecraft server (should be restrictive)
                       nullable: true
                       properties:
                         fsGroup:
@@ -1615,7 +1631,7 @@ spec:
                           type: object
                       type: object
                     volume:
-                      description: Volume represents a named volume in a pod that may be accessed by any container in the pod.
+                      description: volume to mount to the minecraft root (only useful for replicas = 1)
                       nullable: true
                       properties:
                         awsElasticBlockStore:
@@ -2623,7 +2639,7 @@ spec:
                         - name
                       type: object
                     volumeClaimTemplate:
-                      description: "PersistentVolumeClaim is a user's request for and claim to a persistent volume"
+                      description: volume claim template to use for the minecraft root (overrides the volume field if set)
                       nullable: true
                       properties:
                         apiVersion:
@@ -2894,16 +2910,21 @@ spec:
                       type: object
                   type: object
                 replicas:
+                  description: number of identical proxies to create
                   format: int32
                   type: integer
                 runner:
+                  description: options for the server runner
                   properties:
                     config:
+                      description: configmaps to mount inside the minecraft root
                       items:
                         properties:
                           name:
+                            description: name of configmap to mount
                             type: string
                           path:
+                            description: location relative to the Minecraft root to mount the configmap
                             type: string
                         required:
                           - name
@@ -2912,19 +2933,24 @@ spec:
                       nullable: true
                       type: array
                     jar:
+                      description: server jar to download and run
                       properties:
                         build:
+                          description: build according to the PaperMC API
                           type: string
                         version:
+                          description: version according to the PaperMC API
                           type: string
                       required:
                         - build
                         - version
                       type: object
                     jvm:
+                      description: space separated options to pass to the JVM (i.e. -Dsomething=something -Dother=other)
                       nullable: true
                       type: string
                     plugins:
+                      description: list of plugin URLs to download on server start
                       items:
                         type: string
                       nullable: true
@@ -2933,7 +2959,7 @@ spec:
                     - jar
                   type: object
                 selector:
-                  description: A label selector is a label query over a set of resources. The result of matchLabels and matchExpressions are ANDed. An empty label selector matches all objects. A null label selector matches no objects.
+                  description: what MinecraftSets to add to this proxy (only matchLabels is supported)
                   nullable: true
                   properties:
                     matchExpressions:
@@ -2964,6 +2990,7 @@ spec:
                       type: object
                   type: object
                 type:
+                  description: "type of proxy (currently only `velocity` is supported)"
                   type: string
               required:
                 - container
