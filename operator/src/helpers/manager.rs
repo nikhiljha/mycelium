@@ -151,7 +151,7 @@ impl Manager {
                             val,
                             set.metadata.namespace.clone().unwrap()
                         ),
-                        host: spec.proxy.hostname.clone(),
+                        host: spec.proxy.clone().unwrap_or_default().hostname.clone(),
                         name: set.metadata.name.clone().unwrap(),
                     }
                 })

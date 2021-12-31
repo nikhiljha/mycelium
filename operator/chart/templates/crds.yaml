@@ -1419,6 +1419,7 @@ spec:
                   type: object
                 proxy:
                   description: options to pass to proxies that select this MinecraftSet
+                  nullable: true
                   properties:
                     hostname:
                       description: configures the proxy to create a forced host for the MinecraftSet
@@ -1479,7 +1480,6 @@ spec:
                     - jar
                   type: object
               required:
-                - proxy
                 - replicas
                 - runner
               type: object

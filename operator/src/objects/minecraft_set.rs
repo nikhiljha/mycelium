@@ -68,7 +68,7 @@ pub struct MinecraftSetSpec {
     pub container: Option<ContainerOptions>,
 
     /// options to pass to proxies that select this MinecraftSet
-    pub proxy: ProxyOptions,
+    pub proxy: Option<ProxyOptions>,
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
