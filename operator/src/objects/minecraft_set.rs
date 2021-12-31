@@ -61,9 +61,6 @@ pub struct MinecraftSetSpec {
     /// number of identical servers to create
     pub replicas: i32,
 
-    /// type of proxy (currently only `paper` is supported)
-    pub r#type: String,
-
     /// options for the server runner
     pub runner: RunnerOptions,
 
@@ -104,15 +101,6 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
             EnvVar {
                 name: String::from("MYCELIUM_PLUGINS"),
                 value: Some(mcset.spec.runner.plugins.clone().unwrap_or(vec![]).join(",")),
-                value_from: None,
-            },
-            EnvVar {
-                name: String::from("MYCELIUM_RUNNER_JAR_URL"),
-                value: Some(get_download_url(
-                    &mcset.spec.r#type,
-                    &mcset.spec.runner.jar.version,
-                    &mcset.spec.runner.jar.build,
-                )),
                 value_from: None,
             },
         ],

@@ -47,6 +47,7 @@ use crate::{
     Error, MinecraftProxy, MinecraftSet,
 };
 use crate::Error::MyceliumError;
+use crate::helpers::jarapi::get_download_url;
 
 pub mod minecraft_proxy;
 pub mod minecraft_set;
@@ -82,7 +83,7 @@ pub struct ContainerOptions {
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 pub struct RunnerOptions {
     /// server jar to download and run
-    pub jar: VersionDouble,
+    pub jar: VersionTriple,
 
     /// space separated options to pass to the JVM (i.e. -Dsomething=something -Dother=other)
     pub jvm: Option<String>,
@@ -95,7 +96,10 @@ pub struct RunnerOptions {
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
-pub struct VersionDouble {
+pub struct VersionTriple {
+    /// type of jar (currently only `paper` or `velocity` is supported)
+    pub r#type: String,
+
     /// version according to the PaperMC API
     pub version: String,
 
@@ -192,6 +196,15 @@ pub async fn generic_reconcile(
         EnvVar {
             name: String::from("MYCELIUM_FW_TOKEN"),
             value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
+            value_from: None,
+        },
+        EnvVar {
+            name: String::from("MYCELIUM_RUNNER_JAR_URL"),
+            value: Some(get_download_url(
+                &runner.jar.r#type,
+                &runner.jar.version,
+                &runner.jar.build,
+            )),
             value_from: None,
         },
     ].into_iter().chain(env).collect();

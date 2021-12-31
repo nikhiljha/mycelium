@@ -123,15 +123,6 @@ pub async fn reconcile(
                 value_from: None,
             },
             EnvVar {
-                name: String::from("MYCELIUM_RUNNER_JAR_URL"),
-                value: Some(get_download_url(
-                    &mcproxy.spec.r#type,
-                    &mcproxy.spec.runner.jar.version,
-                    &mcproxy.spec.runner.jar.build,
-                )),
-                value_from: None,
-            },
-            EnvVar {
                 name: String::from("K8S_NAMESPACE"),
                 value: None,
                 value_from: Some(EnvVarSource {

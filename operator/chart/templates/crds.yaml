@@ -1453,11 +1453,15 @@ spec:
                         build:
                           description: build according to the PaperMC API
                           type: string
+                        type:
+                          description: "type of jar (currently only `paper` or `velocity` is supported)"
+                          type: string
                         version:
                           description: version according to the PaperMC API
                           type: string
                       required:
                         - build
+                        - type
                         - version
                       type: object
                     jvm:
@@ -1473,15 +1477,11 @@ spec:
                   required:
                     - jar
                   type: object
-                type:
-                  description: "type of proxy (currently only `paper` is supported)"
-                  type: string
               required:
                 - container
                 - proxy
                 - replicas
                 - runner
-                - type
               type: object
           required:
             - spec
@@ -2938,11 +2938,15 @@ spec:
                         build:
                           description: build according to the PaperMC API
                           type: string
+                        type:
+                          description: "type of jar (currently only `paper` or `velocity` is supported)"
+                          type: string
                         version:
                           description: version according to the PaperMC API
                           type: string
                       required:
                         - build
+                        - type
                         - version
                       type: object
                     jvm:
