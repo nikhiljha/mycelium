@@ -86,6 +86,7 @@ fn run_jar(cwd: &str, file: &str) {
         .expect("run jar");
 
     let id = minecraft.id().clone();
+    let handle = signals.handle();
     thread::spawn(move || {
         for _ in signals.forever() {
             println!("[runner] Caught interrupt, sending sigterm to java...");
@@ -96,6 +97,7 @@ fn run_jar(cwd: &str, file: &str) {
 
     minecraft.wait()
         .expect("wait for jar");
+    handle.close();
 }
 
 fn download_plugins(data_path: &Path) -> Result<(), Error> {

@@ -32,6 +32,10 @@ spec:
               value: mycelium-operator.{{ .Release.Namespace }}.svc.cluster.local:8080
             - name: MYCELIUM_RUNNER_IMAGE
               value: {{ tpl $.Values.images.runner $ }}
+            - name: MYCELIUM_PLUGIN_VELOCITY
+              value: {{ tpl $.Values.plugins.velocity $ }}
+            - name: MYCELIUM_PLUGIN_PAPER
+              value: {{ tpl $.Values.plugins.paper $ }}
           ports:
             - containerPort: 8080
               name: api
@@ -41,5 +45,11 @@ spec:
               port: api
             initialDelaySeconds: 5
             periodSeconds: 5
-          resources: {{ .Values.resources }}
+          resources:
+            limits:
+              cpu: {{ .Values.resources.limits.cpu }}
+              memory: {{ .Values.resources.limits.memory }}
+            requests:
+              cpu: {{ .Values.resources.requests.cpu }}
+              memory: {{ .Values.resources.requests.memory }}
       serviceAccountName: mycelium-operator

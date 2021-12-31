@@ -18,4 +18,4 @@ ENV MYCELIUM_DATA_PATH=/data
 RUN mkdir -p /config && mkdir -p /data
 
 COPY --from=builder /mycelium-runner/target/release/mycelium-runner /mycelium-runner
-CMD /mycelium-runner
+CMD ["/mycelium-runner"]

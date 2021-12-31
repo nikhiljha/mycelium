@@ -91,6 +91,11 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
         ..crate::objects::object_to_owner_reference::<MinecraftSet>(mcset.metadata.clone())?
     };
 
+    let mut plugin = vec![];
+    if let Some(p) = std::env::var("MYCELIUM_PLUGIN_PAPER").ok() {
+        plugin.push(p)
+    }
+
     generic_reconcile(
         vec![
             EnvVar {
@@ -100,7 +105,15 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
             },
             EnvVar {
                 name: String::from("MYCELIUM_PLUGINS"),
-                value: Some(mcset.spec.runner.plugins.clone().unwrap_or(vec![]).join(",")),
+                value: Some(mcset
+                    .spec
+                    .runner
+                    .plugins
+                    .clone()
+                    .unwrap_or(vec![])
+                    .into_iter()
+                    .chain(plugin.into_iter())
+                    .collect::<Vec<String>>().join(",")),
                 value_from: None,
             },
         ],

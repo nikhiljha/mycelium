@@ -58,8 +58,7 @@ class Plugin {
     @Inject
     lateinit var proxy: ProxyServer
 
-    @Inject
-    lateinit var registry: PrometheusMeterRegistry
+    private lateinit var registry: PrometheusMeterRegistry
 
     @Inject
     @DataDirectory

@@ -3,6 +3,10 @@ images:
   operator: "harbor.ocf.berkeley.edu/mycelium/operator:{{ .Chart.AppVersion }}"
   runner: "harbor.ocf.berkeley.edu/mycelium/runner:{{ .Chart.AppVersion }}"
 
+plugins:
+  velocity: "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-{{ .Chart.AppVersion }}.jar"
+  paper: "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-paper-{{ .Chart.AppVersion }}.jar"
+
 # resources for the operator ONLY -  server and proxy resources
 # are managed in the MinecraftSet and MinecraftProxy CRDs
 resources:

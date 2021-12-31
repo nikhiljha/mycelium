@@ -91,6 +91,11 @@ pub async fn reconcile(
         ..crate::objects::object_to_owner_reference::<MinecraftProxy>(mcproxy.metadata.clone())?
     };
 
+    let mut plugin = vec![];
+    if let Some(p) = env::var("MYCELIUM_PLUGIN_VELOCITY").ok() {
+        plugin.push(p)
+    }
+
     generic_reconcile(
         vec![
             EnvVar {
@@ -107,10 +112,7 @@ pub async fn reconcile(
                     .clone()
                     .unwrap_or(vec![])
                     .into_iter()
-                    .chain(vec![format!(
-                        "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-plugin-{}-all.jar",
-                        env!("CARGO_PKG_VERSION"),
-                    )].into_iter())
+                    .chain(plugin.into_iter())
                     .collect::<Vec<String>>().join(",")),
                 value_from: None,
             },
@@ -133,13 +135,7 @@ pub async fn reconcile(
             EnvVar {
                 name: String::from("K8S_NAME"),
                 value: Some(name.clone()),
-                value_from: Some(EnvVarSource {
-                    field_ref: Some(ObjectFieldSelector {
-                        api_version: None,
-                        field_path: "metadata.name".to_string()
-                    }),
-                    ..EnvVarSource::default()
-                }),
+                value_from: None,
             },
         ],
         IntOrString::Int(25577),
