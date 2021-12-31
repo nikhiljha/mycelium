@@ -14,9 +14,9 @@ helm install mycelium/mycelium -n mycelium
 
 ## Usage
 
-Create MinecraftProxy CRDs representing proxies, and MinecraftSet CRDs representing servers. All servers with the same `env` and `proxy` labels will be bridged together. Below is a minimal example, but the full spec is available in the docs.
+Create MinecraftProxy CRDs representing proxies, and MinecraftSet CRDs representing servers. Below is a minimal example, but the full spec is available in the docs.
 
-> :warning: The `mycelium.njha.dev/v1alpha1` apiVersion is unstable and may change from release to release, even across minor versions. It will, however, not change across patch versions.
+> :warning: The `mycelium.njha.dev/v1beta1` apiVersion is unstable and may change from release to release, even across minor versions. It will, however, not change across patch versions.
 
 <table>
 <tr>
@@ -28,22 +28,20 @@ Create MinecraftProxy CRDs representing proxies, and MinecraftSet CRDs represent
 
 ```yaml
 kind: MinecraftProxy
-apiVersion: mycelium.njha.dev/v1alpha1
+apiVersion: mycelium.njha.dev/v1beta1
 metadata:
   name: proxy
-  namespace: minecraft
-  labels:
-    mycelium.njha.dev/env: production
-    mycelium.njha.dev/proxy: global
 spec:
   replicas: 1
-  type: velocity
-  container: {}
-  proxy:
-    jvm: "-Xmx1G -Xms1G"
+  selector:
+    matchLabels:
+      mycelium.njha.dev/proxy: cluster
+  runner:
     jar:
+      type: velocity
       version: 3.1.2-SNAPSHOT
-      build: "109"
+      build: "110"
+    jvm: "-Xmx4G -Xms4G"
 ```
 
 </td>
@@ -51,27 +49,29 @@ spec:
 
 ```yaml
 kind: MinecraftSet
-apiVersion: mycelium.njha.dev/v1alpha1
+apiVersion: mycelium.njha.dev/v1beta1
 metadata:
-  name: lobby
+  name: testing
   labels:
-    mycelium.njha.dev/env: production
-    mycelium.njha.dev/proxy: global
+    mycelium.njha.dev/proxy: cluster
 spec:
-  replicas: 1
-  type: paper
-  game:
+  replicas: 3
+  runner:
     jar:
+      type: paper
       version: 1.18.1
-      build: "101"
-    jvm: "-Xmx1G -Xms1G"
-  proxy:
-    hostname: lobby.minecraft.ocf.berkeley.edu
+      build: "114"
+    jvm: "-Xmx2G -Xms2G"
   container:
-    volume:
-      name: root
-      persistentVolumeClaim:
-        claimName: pvc-set
+    volumeClaimTemplate:
+      metadata:
+        name: root
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        storageClassName: openebs-zfspv
+        resources:
+          requests:
+            storage: 64Gi
 ```
 
 </td>
