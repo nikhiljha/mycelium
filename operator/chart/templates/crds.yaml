@@ -1425,6 +1425,12 @@ spec:
                       description: configures the proxy to create a forced host for the MinecraftSet
                       nullable: true
                       type: string
+                    priority:
+                      description: "priority for the default try = [] list, None means don't include in list"
+                      format: uint32
+                      minimum: 0.0
+                      nullable: true
+                      type: integer
                   type: object
                 replicas:
                   description: number of identical servers to create

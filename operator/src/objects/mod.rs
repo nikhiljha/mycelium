@@ -230,6 +230,8 @@ pub async fn generic_reconcile(
                     security_context: container.security_context,
                     containers: vec![Container {
                         name: name.clone(),
+                        tty: Some(true),
+                        stdin: Some(true),
                         image: Some(String::from(&ctx.get_ref().config.runner_image)),
                         image_pull_policy: Some(String::from("IfNotPresent")),
                         resources: container.resources,

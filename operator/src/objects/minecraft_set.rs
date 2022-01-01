@@ -75,6 +75,9 @@ pub struct MinecraftSetSpec {
 pub struct ProxyOptions {
     /// configures the proxy to create a forced host for the MinecraftSet
     pub hostname: Option<String>,
+
+    /// priority for the default try = [] list, None means don't include in list
+    pub priority: Option<u32>,
 }
 
 #[instrument(skip(ctx), fields(trace_id))]

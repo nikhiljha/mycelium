@@ -142,6 +142,7 @@ impl Manager {
 
         Ok(objects.items.iter().flat_map(|set: &MinecraftSet| {
             let spec: &MinecraftSetSpec = &set.spec;
+            let proxy = spec.proxy.clone().unwrap_or_default();
             (0..spec.replicas)
                 .map(move |val| -> VelocityServerEntry {
                     VelocityServerEntry {
@@ -151,8 +152,9 @@ impl Manager {
                             val,
                             set.metadata.namespace.clone().unwrap()
                         ),
-                        host: spec.proxy.clone().unwrap_or_default().hostname.clone(),
+                        host: proxy.hostname.clone(),
                         name: set.metadata.name.clone().unwrap(),
+                        priority: proxy.priority.clone(),
                     }
                 })
                 .into_iter()
@@ -175,6 +177,8 @@ pub struct VelocityServerEntry {
     pub host: Option<String>,
     /// unique name for server
     pub name: String,
+    /// priority for default list
+    pub priority: Option<u32>,
 }
 
 #[derive(Clone)]
