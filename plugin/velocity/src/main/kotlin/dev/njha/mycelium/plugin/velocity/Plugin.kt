@@ -11,7 +11,11 @@ import com.velocitypowered.api.plugin.Plugin
 import com.velocitypowered.api.plugin.annotation.DataDirectory
 import com.velocitypowered.api.proxy.ProxyServer
 import com.velocitypowered.api.proxy.server.ServerInfo
+import dev.cubxity.plugins.metrics.api.UnifiedMetrics
+import dev.cubxity.plugins.metrics.api.UnifiedMetricsProvider
 import dev.njha.mycelium.plugin.common.Monitoring
+import dev.njha.mycelium.plugin.velocity.metrics.MetricsCollection
+import dev.njha.mycelium.plugin.velocity.metrics.MetricsCollector
 import dev.njha.mycelium.plugin.velocity.models.Server
 import io.ktor.application.*
 import io.ktor.client.*
@@ -35,8 +39,8 @@ import org.slf4j.Logger
 import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.nio.file.Path
+import java.util.*
 import java.util.concurrent.TimeUnit
-import kotlin.collections.HashMap
 import kotlin.collections.set
 import kotlin.reflect.full.declaredMemberFunctions
 import kotlin.reflect.jvm.isAccessible
@@ -45,7 +49,7 @@ import kotlin.reflect.jvm.isAccessible
 @Plugin(
     id = "mycelium",
     name = "Mycelium for Velocity",
-    version = "0.3.0",
+    version = "0.4.0",
     dependencies = [],
     url = "https://nikhiljha.com/projects/mycelium",
     description = "syncs state with the Mycelium operator",
@@ -58,7 +62,7 @@ class Plugin {
     @Inject
     lateinit var proxy: ProxyServer
 
-    private lateinit var registry: PrometheusMeterRegistry
+    private lateinit var metrics: MetricsCollector
 
     @Inject
     @DataDirectory
@@ -67,6 +71,7 @@ class Plugin {
     private suspend fun sync() {
         // TODO: Generate a TLS cert for the API server
         HttpClient(Java).use { httpClient ->
+            var churn = 0
             val endpoint = System.getenv("MYCELIUM_ENDPOINT") ?: "localhost:8181"
             val namespace = System.getenv("K8S_NAMESPACE") ?: "default"
             val name = System.getenv("K8S_NAME") ?: "proxy"
@@ -92,14 +97,25 @@ class Plugin {
                         proxy.configuration.attemptConnectionOrder.remove(oldServer.serverInfo.name);
                         proxy.unregisterServer(oldServer.serverInfo)
                         log.info("removed server ${oldServer.serverInfo.name}")
+                        churn += 1
                     }
                 }
 
                 val forcedHosts = mutableMapOf<String, MutableList<String>>();
+                val tryList: PriorityQueue<Server> = PriorityQueue<Server>();
 
                 // add servers
                 for (server in newServers.values) {
+                    tryList.add(server)
                     val rs = proxy.getServer(server.name)
+                    if (server.host != null) {
+                        if (forcedHosts.containsKey(server.host)) {
+                            forcedHosts[server.host]?.add(server.name)
+                        } else {
+                            forcedHosts[server.host] = mutableListOf(server.name)
+                        }
+                    }
+
                     if (rs.isEmpty) {
                         proxy.registerServer(
                             ServerInfo(
@@ -107,17 +123,14 @@ class Plugin {
                                 InetSocketAddress(server.address, 25565)
                             )
                         )
-                        proxy.configuration.attemptConnectionOrder.add(server.name);
-                        if (server.host != null) {
-                            if (forcedHosts.containsKey(server.host)) {
-                                forcedHosts[server.host]?.add(server.name)
-                            } else {
-                                forcedHosts[server.host] = mutableListOf(server.name)
-                            }
-                        }
                         log.info("added server ${server.name}")
+                        churn += 1
                     }
                 }
+
+                // set default try list
+                proxy.configuration.attemptConnectionOrder.clear()
+                proxy.configuration.attemptConnectionOrder.addAll(tryList.map { server -> server.name })
 
                 // set forced hosts
                 val forcedHostsField = proxy.configuration::class.java.getDeclaredField("forcedHosts")
@@ -127,6 +140,9 @@ class Plugin {
                     it.isAccessible = true
                     it.call(fhClass, forcedHosts)
                 }
+
+                // record metrics
+                metrics.churn = churn
             } catch (e: ConnectException) {
                 log.error("failed to connect to operator - could not sync server list! (url = $url)")
             }
@@ -134,24 +150,17 @@ class Plugin {
     }
 
     @Subscribe
-    fun onPlayerJoin(event: PostLoginEvent) {
-        registry.gauge("velocity.playerCount", proxy.playerCount)
-    }
-
-    @Subscribe
-    fun onPlayerLeave(event: DisconnectEvent) {
-        registry.gauge("velocity.playerCount", proxy.playerCount)
-    }
-
-    @Subscribe
     fun onStart(event: ProxyInitializeEvent) {
-        registry = Monitoring().initMonitoring()
-        registry.gauge("velocity.playerCount", proxy.playerCount)
+        metrics = MetricsCollector()
+        if (proxy.pluginManager.isLoaded("unifiedmetrics")) {
+            val api: UnifiedMetrics = UnifiedMetricsProvider.get()
+            api.metricsManager.registerCollection(MetricsCollection(metrics))
+        }
 
-        // sync the servers from the operator now, and every 5 minutes
+        // sync the servers from the operator now, and every 1 minute
         proxy.scheduler
             .buildTask(this) { runBlocking { launch { sync() } } }
-            .repeat(5L, TimeUnit.MINUTES)
+            .repeat(1L, TimeUnit.MINUTES)
             .schedule()
 
         log.info("Hello, World.")

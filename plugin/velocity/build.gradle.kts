@@ -31,7 +31,9 @@ dependencies {
     implementation("io.ktor:ktor-gson:1.6.7")
     implementation("io.ktor:ktor-metrics-micrometer:1.6.7")
     implementation("io.micrometer:micrometer-registry-prometheus:1.8.1")
+
     compileOnly("com.velocitypowered:velocity-api:3.1.0")
+    compileOnly("dev.cubxity.plugins:unifiedmetrics-api:0.3.4")
     kapt("com.velocitypowered:velocity-api:3.1.0")
 
     implementation(project(":common"))

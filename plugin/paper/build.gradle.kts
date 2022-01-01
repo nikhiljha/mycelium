@@ -18,6 +18,7 @@ dependencies {
     implementation(project(":common"))
     implementation("io.micrometer:micrometer-registry-prometheus:1.8.1")
     compileOnly("io.papermc.paper:paper-api:1.18.1-R0.1-SNAPSHOT")
+    compileOnly("dev.cubxity.plugins:unifiedmetrics-api:0.3.4")
     kapt("io.papermc.paper:paper-api:1.18.1-R0.1-SNAPSHOT")
 }
 
