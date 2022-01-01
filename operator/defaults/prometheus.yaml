@@ -1,0 +1,21 @@
+mode: "HTTP" # "HTTP" or "PUSHGATEWAY"
+
+# Applies to "HTTP" mode.
+http:
+  host: "0.0.0.0"
+  port: 9970 # The default in 0.4.x will be 9970.
+  authentication:
+    scheme: "NONE" # "NONE" or "BASIC"
+    username: "username"
+    password: "password"
+
+# Applies to "PUSHGATEWAY" mode.
+# Note that this is NOT compatible with remote_write.
+pushGateway:
+  job: "unifiedmetrics"
+  url: "http://pushgateway:9091"
+  authentication:
+    scheme: "BASIC" # "NONE" or "BASIC"
+    username: "username"
+    password: "password"
+  interval: 10

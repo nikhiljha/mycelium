@@ -1,4 +1,5 @@
 use std::{env, fs::{create_dir_all, read_to_string, File}, io::{Error, Write}, path::Path, process::{Command, Stdio}, thread};
+use std::path::PathBuf;
 
 use linked_hash_map::LinkedHashMap;
 use nix::libc::pid_t;
@@ -44,22 +45,26 @@ fn main() -> Result<(), Error> {
     }?;
 
     // download plugins
-    download_plugins(data_path).unwrap();
+    download_plugins(data_path)?;
+
+    // configure metrics
+    configure_metrics(data_path)?;
 
     // start server
-    match server_kind.as_str() {
-        "game" => download_run_game(data_path),
-        "proxy" => download_run_proxy(data_path),
-        _ => panic!("if you're seeing this, all hope is lost, the end times are here"),
-    }?;
+    download_run_server(data_path)?;
 
     Ok(())
 }
 
-fn download_file(url: &str, path: &str) {
-    // TODO: rewrite properly without Command
+fn download_file(url: &str, path: PathBuf) {
+    if path.exists() {
+        println!("skipping {}", url);
+        return
+    }
+    println!("downloading {}", url);
+    let path_str = path.to_str().unwrap();
     Command::new("curl")
-        .args(&[url, "--output", path])
+        .args(&[url, "--output", path_str])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
@@ -107,32 +112,20 @@ fn download_plugins(data_path: &Path) -> Result<(), Error> {
     let plugin_dir = plugin_dir_path.to_str().unwrap();
     create_dir_all(plugin_dir)?;
     for p in plugins {
-        println!("downloading {}", p);
         let file = p.split("/").last().unwrap();
-        let plugin_path_str = plugin_dir_path.join(file);
-        download_file(p, plugin_path_str.to_str().unwrap());
+        let plugin_path = plugin_dir_path.join(file);
+        download_file(p, plugin_path);
     }
     Ok(())
 }
 
-fn download_run_game(data_path: &Path) -> Result<(), Error> {
+fn download_run_server(data_path: &Path) -> Result<(), Error> {
     let url = env::var("MYCELIUM_RUNNER_JAR_URL").unwrap();
     let data_path_str = data_path.to_str().unwrap();
-    let paper_jar_path = data_path.join("paper.jar");
-    let paper_jar_str = paper_jar_path.to_str().unwrap();
-    download_file(&url, paper_jar_str);
-    run_jar(data_path_str, "paper.jar");
-
-    Ok(())
-}
-
-fn download_run_proxy(data_path: &Path) -> Result<(), Error> {
-    let url = env::var("MYCELIUM_RUNNER_JAR_URL").unwrap();
-    let data_path_str = data_path.to_str().unwrap();
-    let velocity_jar_path = data_path.join("velocity.jar");
-    let velocity_jar_str = velocity_jar_path.to_str().unwrap();
-    download_file(&url, velocity_jar_str);
-    run_jar(data_path_str, "velocity.jar");
+    let file = url.split("/").last().unwrap();
+    let paper_jar_path = data_path.join(file);
+    download_file(&url, paper_jar_path);
+    run_jar(data_path_str, file);
 
     Ok(())
 }
@@ -202,5 +195,16 @@ fn configure_proxy(token: String, data_path: &Path) -> Result<(), Error> {
     // write the modified config
     let mut f = File::create(velocity_toml_path)?;
     f.write_all(toml_doc.to_string().as_bytes())?;
+    Ok(())
+}
+
+fn configure_metrics(data_path: &Path) -> Result<(), Error> {
+    let config_path = data_path.join("plugins/UnifiedMetrics/driver");
+    create_dir_all(config_path.clone())?;
+    let prom_path = config_path.join("prometheus.yml");
+    if !prom_path.exists() {
+        let mut f = File::create(prom_path)?;
+        f.write_all(include_str!("../defaults/prometheus.yaml").as_bytes())?;
+    }
     Ok(())
 }

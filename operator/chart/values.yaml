@@ -4,8 +4,12 @@ images:
   runner: "harbor.ocf.berkeley.edu/mycelium/runner:{{ .Chart.AppVersion }}"
 
 plugins:
-  velocity: "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-{{ .Chart.AppVersion }}.jar"
-  paper: "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-paper-{{ .Chart.AppVersion }}.jar"
+  mycelium:
+    velocity: "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-{{ .Chart.AppVersion }}.jar"
+    paper: "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-paper-{{ .Chart.AppVersion }}.jar"
+  metrics:
+    velocity: "https://github.com/Cubxity/UnifiedMetrics/releases/download/v0.3.4/unifiedmetrics-platform-velocity-0.3.4.jar"
+    paper: "https://github.com/Cubxity/UnifiedMetrics/releases/download/v0.3.4/unifiedmetrics-platform-bukkit-0.3.4.jar"
 
 # resources for the operator ONLY -  server and proxy resources
 # are managed in the MinecraftSet and MinecraftProxy CRDs

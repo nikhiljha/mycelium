@@ -98,6 +98,9 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
     if let Some(p) = std::env::var("MYCELIUM_PLUGIN_PAPER").ok() {
         plugin.push(p)
     }
+    if let Some(p) = std::env::var("METRICS_PLUGIN_PAPER").ok() {
+        plugin.push(p)
+    }
 
     generic_reconcile(
         vec![

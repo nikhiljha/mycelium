@@ -33,9 +33,13 @@ spec:
             - name: MYCELIUM_RUNNER_IMAGE
               value: {{ tpl $.Values.images.runner $ }}
             - name: MYCELIUM_PLUGIN_VELOCITY
-              value: {{ tpl $.Values.plugins.velocity $ }}
+              value: {{ tpl $.Values.plugins.mycelium.velocity $ }}
             - name: MYCELIUM_PLUGIN_PAPER
-              value: {{ tpl $.Values.plugins.paper $ }}
+              value: {{ tpl $.Values.plugins.mycelium.paper $ }}
+            - name: METRICS_PLUGIN_VELOCITY
+              value: {{ tpl $.Values.plugins.metrics.velocity $ }}
+            - name: METRICS_PLUGIN_PAPER
+              value: {{ tpl $.Values.plugins.metrics.paper $ }}
           ports:
             - containerPort: 8080
               name: api

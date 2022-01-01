@@ -2,18 +2,17 @@ package dev.njha.mycelium.plugin.velocity
 
 import com.google.gson.Gson
 import com.google.inject.Inject
+import com.typesafe.config.ConfigFactory
 import com.velocitypowered.api.event.Subscribe
-import com.velocitypowered.api.event.connection.DisconnectEvent
-import com.velocitypowered.api.event.connection.PostLoginEvent
 import com.velocitypowered.api.event.proxy.ProxyInitializeEvent
 import com.velocitypowered.api.event.proxy.ProxyShutdownEvent
+import com.velocitypowered.api.plugin.Dependency
 import com.velocitypowered.api.plugin.Plugin
 import com.velocitypowered.api.plugin.annotation.DataDirectory
 import com.velocitypowered.api.proxy.ProxyServer
 import com.velocitypowered.api.proxy.server.ServerInfo
 import dev.cubxity.plugins.metrics.api.UnifiedMetrics
 import dev.cubxity.plugins.metrics.api.UnifiedMetricsProvider
-import dev.njha.mycelium.plugin.common.Monitoring
 import dev.njha.mycelium.plugin.velocity.metrics.MetricsCollection
 import dev.njha.mycelium.plugin.velocity.metrics.MetricsCollector
 import dev.njha.mycelium.plugin.velocity.models.Server
@@ -27,15 +26,14 @@ import io.ktor.config.*
 import io.ktor.features.*
 import io.ktor.gson.*
 import io.ktor.http.*
-import io.ktor.metrics.micrometer.*
 import io.ktor.request.*
 import io.ktor.response.*
 import io.ktor.routing.*
 import io.ktor.server.engine.*
 import io.ktor.server.netty.*
-import io.micrometer.prometheus.PrometheusMeterRegistry
 import kotlinx.coroutines.*
 import org.slf4j.Logger
+import org.slf4j.LoggerFactory
 import java.net.ConnectException
 import java.net.InetSocketAddress
 import java.nio.file.Path
@@ -50,7 +48,7 @@ import kotlin.reflect.jvm.isAccessible
     id = "mycelium",
     name = "Mycelium for Velocity",
     version = "0.4.0",
-    dependencies = [],
+    dependencies = [Dependency(id = "unifiedmetrics", optional = false)],
     url = "https://nikhiljha.com/projects/mycelium",
     description = "syncs state with the Mycelium operator",
     authors = ["Nikhil Jha <source@nikhiljha.com>"]
@@ -151,11 +149,43 @@ class Plugin {
 
     @Subscribe
     fun onStart(event: ProxyInitializeEvent) {
+        // hook into metrics ews
         metrics = MetricsCollector()
         if (proxy.pluginManager.isLoaded("unifiedmetrics")) {
             val api: UnifiedMetrics = UnifiedMetricsProvider.get()
             api.metricsManager.registerCollection(MetricsCollection(metrics))
         }
+
+        // run mycelium api
+        val ews = embeddedServer(Netty, environment = applicationEngineEnvironment {
+            log = LoggerFactory.getLogger("mycelium")
+            config = HoconApplicationConfig(ConfigFactory.load())
+
+            module {
+                install(ContentNegotiation) {
+                    gson()
+                }
+                routing {
+                    get("/") {
+                        call.respondText("ok", ContentType.Text.Plain)
+                    }
+
+                    get("/debug/servers") {
+                        call.respond(proxy.allServers)
+                    }
+
+                    get("/debug/config") {
+                        call.respond(proxy.configuration)
+                    }
+                }
+            }
+
+            connector {
+                port = 9273
+                host = "0.0.0.0"
+            }
+        })
+        ews.start(wait = false)
 
         // sync the servers from the operator now, and every 1 minute
         proxy.scheduler

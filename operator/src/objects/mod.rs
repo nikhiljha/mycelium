@@ -224,6 +224,9 @@ pub async fn generic_reconcile(
             template: PodTemplateSpec {
                 metadata: Some(ObjectMeta {
                     labels: Some(labels.clone()),
+                    annotations: Some(vec![("prometheus.io/port".into(), "9970".into()),
+                                           ("prometheus.io/scrape".into(), "true".into())]
+                        .into_iter().collect()),
                     ..ObjectMeta::default()
                 }),
                 spec: Some(PodSpec {

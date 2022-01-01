@@ -95,6 +95,9 @@ pub async fn reconcile(
     if let Some(p) = env::var("MYCELIUM_PLUGIN_VELOCITY").ok() {
         plugin.push(p)
     }
+    if let Some(p) = env::var("METRICS_PLUGIN_VELOCITY").ok() {
+        plugin.push(p)
+    }
 
     generic_reconcile(
         vec![
