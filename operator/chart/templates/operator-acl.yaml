@@ -17,7 +17,7 @@ rules:
     verbs: ["*"]
   # TODO: Can we restrict this to only children of mycelium CRDs?
   - apiGroups: ["*"]
-    resources: ["statefulsets", "services", "events"]
+    resources: ["statefulsets", "services", "events", "secrets"]
     verbs: ["*"]
 
 ---

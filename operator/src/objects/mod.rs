@@ -25,6 +25,7 @@ use k8s_openapi::{
         util::intstr::IntOrString,
     },
 };
+use k8s_openapi::api::core::v1::{EnvVarSource, Secret, SecretKeySelector};
 use kube::{
     api::{ListParams, Patch, PatchParams},
     Api, Client, Resource, ResourceExt,
@@ -40,6 +41,7 @@ use prometheus::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use tracing::{debug, error, event, field, info, instrument, trace, warn, Level, Span};
+use sha2::{Sha224, Digest};
 
 use crate::{
     helpers::{manager::Data, metrics::Metrics, state::State},
@@ -195,8 +197,15 @@ pub async fn generic_reconcile(
         },
         EnvVar {
             name: String::from("MYCELIUM_FW_TOKEN"),
-            value: Some(String::from(&ctx.get_ref().config.forwarding_secret)),
-            value_from: None,
+            value: None,
+            value_from: Some(EnvVarSource {
+                secret_key_ref: Some(SecretKeySelector {
+                    key: "forwarding_token".to_string(),
+                    name: Some(name.clone()),
+                    optional: Some(false)
+                }),
+                ..EnvVarSource::default()
+            }),
         },
         EnvVar {
             name: String::from("MYCELIUM_RUNNER_JAR_URL"),
@@ -256,7 +265,7 @@ pub async fn generic_reconcile(
     let service = Service {
         metadata: ObjectMeta {
             name: Some(name.clone()),
-            owner_references: Some(vec![owner_reference]),
+            owner_references: Some(vec![owner_reference.clone()]),
             ..ObjectMeta::default()
         },
         spec: Some(ServiceSpec {
@@ -274,6 +283,20 @@ pub async fn generic_reconcile(
         status: None,
     };
 
+    let mut token = sha2::Sha224::new();
+    token.update(format!("{}{}", ctx.get_ref().config.forwarding_secret, ns.clone()).as_bytes());
+    let token = base64::encode(token.finalize());
+    let secret = Secret {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            owner_references: Some(vec![owner_reference]),
+            ..ObjectMeta::default()
+        },
+        string_data: Some(vec![("forwarding_token".into(), token)]
+            .into_iter().collect()),
+        ..Secret::default()
+    };
+
     kube::Api::<StatefulSet>::namespaced(client.clone(), &ns)
         .patch(
             &name,
@@ -287,6 +310,14 @@ pub async fn generic_reconcile(
             &name,
             &PatchParams::apply("mycelium.njha.dev"),
             &Patch::Apply(&service),
+        )
+        .await?;
+
+    kube::Api::<Secret>::namespaced(client.clone(), &ns)
+        .patch(
+            &name,
+            &PatchParams::apply("mycelium.njha.dev"),
+            &Patch::Apply(&secret),
         )
         .await?;
 
