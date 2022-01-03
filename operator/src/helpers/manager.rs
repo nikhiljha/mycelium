@@ -153,7 +153,7 @@ impl Manager {
                             set.metadata.namespace.clone().unwrap()
                         ),
                         host: proxy.hostname.clone(),
-                        name: set.metadata.name.clone().unwrap(),
+                        name: format!("{}-{}", set.metadata.name.clone().unwrap(), val),
                         priority: proxy.priority.clone(),
                     }
                 })
