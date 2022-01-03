@@ -64,7 +64,7 @@ fn download_file(url: &str, path: PathBuf) {
     println!("downloading {}", url);
     let path_str = path.to_str().unwrap();
     Command::new("curl")
-        .args(&[url, "--output", path_str])
+        .args(&["-L", url, "--output", path_str])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
