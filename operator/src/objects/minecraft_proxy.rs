@@ -85,17 +85,17 @@ pub async fn reconcile(
 
     let name = ResourceExt::name(&mcproxy);
     let ns = ResourceExt::namespace(&mcproxy)
-        .ok_or(MyceliumError("failed to get namespace".into()))?;
+        .ok_or_else(|| MyceliumError("failed to get namespace".into()))?;
     let owner_reference = OwnerReference {
         controller: Some(true),
         ..crate::objects::object_to_owner_reference::<MinecraftProxy>(mcproxy.metadata.clone())?
     };
 
     let mut plugin = vec![];
-    if let Some(p) = env::var("MYCELIUM_PLUGIN_VELOCITY").ok() {
+    if let Ok(p) = env::var("MYCELIUM_PLUGIN_VELOCITY") {
         plugin.push(p)
     }
-    if let Some(p) = env::var("METRICS_PLUGIN_VELOCITY").ok() {
+    if let Ok(p) = env::var("METRICS_PLUGIN_VELOCITY") {
         plugin.push(p)
     }
 
@@ -113,7 +113,7 @@ pub async fn reconcile(
                     .runner
                     .plugins
                     .clone()
-                    .unwrap_or(vec![])
+                    .unwrap_or_default()
                     .into_iter()
                     .chain(plugin.into_iter())
                     .collect::<Vec<String>>().join(",")),

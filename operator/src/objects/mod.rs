@@ -123,14 +123,14 @@ pub fn make_volume_mount(co: &ConfigOptions) -> VolumeMount {
 }
 
 pub fn make_volume(co: &ConfigOptions) -> Volume {
-    return Volume {
+    Volume {
         name: co.name.clone(),
         config_map: Some(ConfigMapVolumeSource {
             name: Some(co.name.clone()),
             ..ConfigMapVolumeSource::default()
         }),
         ..Volume::default()
-    };
+    }
 }
 
 pub fn object_to_owner_reference<K: Resource<DynamicType = ()>>(
@@ -139,8 +139,8 @@ pub fn object_to_owner_reference<K: Resource<DynamicType = ()>>(
     Ok(OwnerReference {
         api_version: K::api_version(&()).to_string(),
         kind: K::kind(&()).to_string(),
-        name: meta.name.ok_or(MyceliumError("failed to get name".into()))?,
-        uid: meta.uid.ok_or(MyceliumError("failed to get uid".into()))?,
+        name: meta.name.ok_or_else(|| MyceliumError("failed to get name".into()))?,
+        uid: meta.uid.ok_or_else(|| MyceliumError("failed to get uid".into()))?,
         ..OwnerReference::default()
     })
 }
@@ -166,7 +166,7 @@ pub async fn generic_reconcile(
         format!("mycelium.njha.dev/{}", shortname),
         name.clone(),
     )]));
-    let configs = runner.config.unwrap_or(vec![]);
+    let configs = runner.config.unwrap_or_default();
     let mut volume_mounts: Vec<VolumeMount> = configs.iter().map(make_volume_mount).collect();
     let mut volumes: Vec<Volume> = configs.iter().map(make_volume).collect();
     let mut tpl_volume: Vec<PersistentVolumeClaim> = vec![];
@@ -175,7 +175,7 @@ pub async fn generic_reconcile(
         volume_mounts.push(VolumeMount {
             mount_path: "/data".to_string(),
             name: volume_tpl.metadata.clone().name
-                .ok_or(MyceliumError("volumeClaimTemplate name".into()))?,
+                .ok_or_else(|| MyceliumError("volumeClaimTemplate name".into()))?,
             ..VolumeMount::default()
         });
         tpl_volume.push(volume_tpl);
@@ -254,7 +254,6 @@ pub async fn generic_reconcile(
                     volumes: Some(volumes),
                     ..PodSpec::default()
                 }),
-                ..PodTemplateSpec::default()
             },
             volume_claim_templates: Some(tpl_volume),
             ..StatefulSetSpec::default()

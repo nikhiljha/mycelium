@@ -88,17 +88,17 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
 
     let name = ResourceExt::name(&mcset);
     let ns = ResourceExt::namespace(&mcset)
-        .ok_or(MyceliumError("failed to get namespace".into()))?;
+        .ok_or_else(|| MyceliumError("failed to get namespace".into()))?;
     let owner_reference = OwnerReference {
         controller: Some(true),
         ..crate::objects::object_to_owner_reference::<MinecraftSet>(mcset.metadata.clone())?
     };
 
     let mut plugin = vec![];
-    if let Some(p) = std::env::var("MYCELIUM_PLUGIN_PAPER").ok() {
+    if let Ok(p) = std::env::var("MYCELIUM_PLUGIN_PAPER") {
         plugin.push(p)
     }
-    if let Some(p) = std::env::var("METRICS_PLUGIN_PAPER").ok() {
+    if let Ok(p) = std::env::var("METRICS_PLUGIN_PAPER") {
         plugin.push(p)
     }
 
@@ -116,7 +116,7 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
                     .runner
                     .plugins
                     .clone()
-                    .unwrap_or(vec![])
+                    .unwrap_or_default()
                     .into_iter()
                     .chain(plugin.into_iter())
                     .collect::<Vec<String>>().join(",")),
@@ -129,7 +129,7 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
         ctx.clone(),
         owner_reference,
         "mcset".to_string(),
-        mcset.spec.replicas.clone(),
+        mcset.spec.replicas,
         mcset.spec.container.unwrap_or_default(),
         mcset.spec.runner,
     )

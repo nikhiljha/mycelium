@@ -3,9 +3,11 @@ use std::{
     sync::{Arc, RwLock},
     time::Duration,
 };
+use actix_web::body::BoxBody;
 
 use futures::{future::BoxFuture, FutureExt, StreamExt};
 use k8s_openapi::api::apps::v1::StatefulSet;
+use k8s_openapi::api::core::v1::{Secret, Service};
 use kube::{api::ListParams, Api, Client};
 use kube_runtime::{
     controller::{Context, ReconcilerAction},
@@ -45,30 +47,27 @@ impl Manager {
         let client = Client::try_default().await.expect("create client");
         let metrics = Metrics::new();
         let state = Arc::new(RwLock::new(State::new()));
-        // TODO: Get forwarding secret from a config file or something, which will
-        // be passed during deployment.
-        let set_context = Context::new(Data {
-            client: client.clone(),
-            metrics: metrics.clone(),
-            state: state.clone(),
-            config: MyceliumConfig {
-                forwarding_secret: env::var("MYCELIUM_FW_TOKEN").unwrap(),
-                runner_image: env::var("MYCELIUM_RUNNER_IMAGE").unwrap(),
-            },
-        });
-        let proxy_context = Context::new(Data {
-            client: client.clone(),
-            metrics: metrics.clone(),
-            state: state.clone(),
-            config: MyceliumConfig {
-                forwarding_secret: env::var("MYCELIUM_FW_TOKEN").unwrap(),
-                runner_image: env::var("MYCELIUM_RUNNER_IMAGE").unwrap(),
-            },
-        });
 
+        // setup configuration and state data
+        let data = Data {
+            client: client.clone(),
+            metrics: metrics.clone(),
+            state: state.clone(),
+            config: MyceliumConfig {
+                forwarding_secret: env::var("MYCELIUM_FW_TOKEN").unwrap(),
+                runner_image: env::var("MYCELIUM_RUNNER_IMAGE").unwrap(),
+            },
+        };
+        let set_context = Context::new(data.clone());
+        let proxy_context = Context::new(data.clone());
+
+        // APIs to watch
         let mcsets = Api::<MinecraftSet>::all(client.clone());
         let mcproxies = Api::<MinecraftProxy>::all(client.clone());
         let statesets = Api::<StatefulSet>::all(client.clone());
+        let secrets = Api::<Secret>::all(client.clone());
+        let services = Api::<Service>::all(client.clone());
+
         // ensure CRD is installed
         mcsets.list(&ListParams::default().limit(1)).await.expect(
             "are the crds installed? install them with: mycelium-crdgen | kubectl apply -f -",
@@ -77,6 +76,8 @@ impl Manager {
         // return the controller
         let set_controller = Controller::new(mcsets, ListParams::default())
             .owns(statesets.clone(), ListParams::default())
+            .owns(secrets.clone(), ListParams::default())
+            .owns(services.clone(), ListParams::default())
             .run(
                 crate::objects::minecraft_set::reconcile,
                 error_policy,
@@ -92,6 +93,8 @@ impl Manager {
 
         let proxy_controller = Controller::new(mcproxies, ListParams::default())
             .owns(statesets.clone(), ListParams::default())
+            .owns(secrets.clone(), ListParams::default())
+            .owns(services.clone(), ListParams::default())
             .run(
                 crate::objects::minecraft_proxy::reconcile,
                 error_policy,
@@ -154,10 +157,9 @@ impl Manager {
                         ),
                         host: proxy.hostname.clone(),
                         name: format!("{}-{}", set.metadata.name.clone().unwrap(), val),
-                        priority: proxy.priority.clone(),
+                        priority: proxy.priority,
                     }
                 })
-                .into_iter()
         }).collect())
     }
 }

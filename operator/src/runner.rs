@@ -11,8 +11,8 @@ use toml_edit::{value, Array, Document, Table};
 use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
 
 fn main() -> Result<(), Error> {
-    let config_path = env::var("MYCELIUM_CONFIG_PATH").unwrap_or(String::from("/config"));
-    let data_path = env::var("MYCELIUM_DATA_PATH").unwrap_or(String::from("/data"));
+    let config_path = env::var("MYCELIUM_CONFIG_PATH").unwrap_or_else(|_| String::from("/config"));
+    let data_path = env::var("MYCELIUM_DATA_PATH").unwrap_or_else(|_| String::from("/data"));
     let fw_token = env::var("MYCELIUM_FW_TOKEN").unwrap();
     let server_kind = env::var("MYCELIUM_RUNNER_KIND").unwrap();
 
@@ -74,7 +74,7 @@ fn download_file(url: &str, path: PathBuf) {
 }
 
 fn run_jar(cwd: &str, file: &str) {
-    let jvm_opts = env::var("MYCELIUM_JVM_OPTS").unwrap_or("".into());
+    let jvm_opts = env::var("MYCELIUM_JVM_OPTS").unwrap_or_else(|_| "".into());
     let args: Vec<&str> = jvm_opts
         .split_terminator(' ')
         .chain(vec!["-jar", file].into_iter())
@@ -90,7 +90,7 @@ fn run_jar(cwd: &str, file: &str) {
         .spawn()
         .expect("run jar");
 
-    let id = minecraft.id().clone();
+    let id = minecraft.id();
     let handle = signals.handle();
     thread::spawn(move || {
         for _ in signals.forever() {
@@ -106,13 +106,13 @@ fn run_jar(cwd: &str, file: &str) {
 }
 
 fn download_plugins(data_path: &Path) -> Result<(), Error> {
-    let plugins_str = env::var("MYCELIUM_PLUGINS").unwrap_or("".into());
-    let plugins = plugins_str.split_terminator(",");
+    let plugins_str = env::var("MYCELIUM_PLUGINS").unwrap_or_else(|_| "".into());
+    let plugins = plugins_str.split_terminator(',');
     let plugin_dir_path = data_path.join("plugins/");
     let plugin_dir = plugin_dir_path.to_str().unwrap();
     create_dir_all(plugin_dir)?;
     for p in plugins {
-        let file = p.split("/").last().unwrap();
+        let file = p.split('/').last().unwrap();
         let plugin_path = plugin_dir_path.join(file);
         download_file(p, plugin_path);
     }
@@ -122,7 +122,7 @@ fn download_plugins(data_path: &Path) -> Result<(), Error> {
 fn download_run_server(data_path: &Path) -> Result<(), Error> {
     let url = env::var("MYCELIUM_RUNNER_JAR_URL").unwrap();
     let data_path_str = data_path.to_str().unwrap();
-    let file = url.split("/").last().unwrap();
+    let file = url.split('/').last().unwrap();
     let paper_jar_path = data_path.join(file);
     download_file(&url, paper_jar_path);
     run_jar(data_path_str, file);
