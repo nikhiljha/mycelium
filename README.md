@@ -70,7 +70,6 @@ spec:
         name: root
       spec:
         accessModes: ["ReadWriteOnce"]
-        storageClassName: openebs-zfspv
         resources:
           requests:
             storage: 64Gi
