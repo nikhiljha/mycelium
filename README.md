@@ -6,6 +6,8 @@ Mycelium is a Kubernetes controller that enables you to orchestrate and bridge t
 
 ## Installation
 
+> :warning: By default, any software with access to your internal cluster network has full control over your Minecraft servers. Work to stop this [is ongoing](https://github.com/nikhiljha/mycelium/issues/1), so you should not use mycelium unless you understand the consequences of this.
+
 ```bash
 helm repo add mycelium https://harbor.ocf.berkeley.edu/chartrepo/mycelium
 kubectl create ns mycelium
