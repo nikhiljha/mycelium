@@ -16,7 +16,7 @@ helm install mycelium/mycelium -n mycelium
 
 ## Usage
 
-Create MinecraftProxy CRDs representing proxies, and MinecraftSet CRDs representing servers. Below is a minimal example, but the full spec is available in the docs.
+Create MinecraftProxy CRDs representing proxies, and MinecraftSet CRDs representing servers. Below is a minimal example, but the full spec is available [in the docs](https://mycelium.njha.dev).
 
 > :warning: The `mycelium.njha.dev/v1beta1` apiVersion is unstable and may change from release to release, even across minor versions. It will, however, not change across patch versions.
 
