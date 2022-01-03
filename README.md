@@ -20,7 +20,7 @@ Create MinecraftProxy CRDs representing proxies, and MinecraftSet CRDs represent
 
 > :warning: The `mycelium.njha.dev/v1beta1` apiVersion is unstable and may change from release to release, even across minor versions. It will, however, not change across patch versions.
 
-<table>
+<table align="center">
 <tr>
 <th>MinecraftProxy</th>
 <th>MinecraftSet</th>
