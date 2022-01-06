@@ -25,7 +25,9 @@ use k8s_openapi::{
         util::intstr::IntOrString,
     },
 };
+use k8s_openapi::api::apps::v1::{Deployment, DeploymentSpec};
 use k8s_openapi::api::core::v1::{EnvVarSource, Secret, SecretKeySelector};
+use k8s_openapi::api::policy::v1::{PodDisruptionBudget, PodDisruptionBudgetSpec};
 use kube::{
     api::{ListParams, Patch, PatchParams},
     Api, Client, Resource, ResourceExt,
@@ -66,6 +68,9 @@ pub struct ConfigOptions {
 #[derive(Serialize, Deserialize, Default, Debug, PartialEq, Clone, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ContainerOptions {
+    /// should the container be stateful? (default = true)
+    pub stateful: Option<bool>,
+
     /// resource requirements for the java pod
     pub resources: Option<ResourceRequirements>,
 
@@ -145,18 +150,25 @@ pub fn object_to_owner_reference<K: Resource<DynamicType = ()>>(
     })
 }
 
-pub async fn generic_reconcile(
+pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
     env: Vec<EnvVar>,
     port: IntOrString,
-    name: String,
-    ns: String,
     ctx: Context<Data>,
-    owner_reference: OwnerReference,
     shortname: String,
-    replicas: i32,
+    crd: T,
     container: ContainerOptions,
     runner: RunnerOptions,
+    replicas: i32,
 ) -> Result<(), Error> {
+    let name = ResourceExt::name(&crd);
+    let ns = ResourceExt::namespace(&crd)
+        .ok_or_else(|| MyceliumError("failed to get namespace".into()))?;
+
+    let owner_reference = OwnerReference {
+        controller: Some(true),
+        ..object_to_owner_reference::<T>(crd.meta().clone())?
+    };
+
     let client = ctx.get_ref().client.clone();
     // Note: This will only error with PoisonError, which is unrecoverable and so we
     // should panic.
@@ -261,6 +273,27 @@ pub async fn generic_reconcile(
         status: None,
     };
 
+    let pdb = PodDisruptionBudget {
+        metadata: ObjectMeta {
+            name: Some(name.clone()),
+            owner_references: Some(vec![owner_reference.clone()]),
+            ..ObjectMeta::default()
+        },
+        spec: Some(PodDisruptionBudgetSpec {
+            max_unavailable: Some(IntOrString::Int(0)),
+            min_available: None,
+            selector: Some(LabelSelector {
+                match_expressions: None,
+                match_labels: Some(labels
+                    .iter()
+                    .chain(vec![("mycelium.njha.dev/destroyable".to_string(), "false".to_string())])
+                    .collect()
+                ),
+            }),
+        }),
+        ..PodDisruptionBudget::default()
+    };
+
     let service = Service {
         metadata: ObjectMeta {
             name: Some(name.clone()),
@@ -295,6 +328,13 @@ pub async fn generic_reconcile(
             .into_iter().collect()),
         ..Secret::default()
     };
+
+    kube::Api::<PodDisruptionBudget>::namespaced(client.clone(), &ns)
+        .patch(
+            &name,
+            &PatchParams::apply("mycelium.njha.dev"),
+            &Patch::Apply(&pdb),
+        ).await?;
 
     kube::Api::<StatefulSet>::namespaced(client.clone(), &ns)
         .patch(

@@ -89,10 +89,6 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
     let name = ResourceExt::name(&mcset);
     let ns = ResourceExt::namespace(&mcset)
         .ok_or_else(|| MyceliumError("failed to get namespace".into()))?;
-    let owner_reference = OwnerReference {
-        controller: Some(true),
-        ..crate::objects::object_to_owner_reference::<MinecraftSet>(mcset.metadata.clone())?
-    };
 
     let mut plugin = vec![];
     if let Ok(p) = std::env::var("MYCELIUM_PLUGIN_PAPER") {
@@ -124,14 +120,12 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
             },
         ],
         IntOrString::Int(25565),
-        name.clone(),
-        ns.clone(),
         ctx.clone(),
-        owner_reference,
         "mcset".to_string(),
-        mcset.spec.replicas,
+        mcset.clone(),
         mcset.spec.container.unwrap_or_default(),
         mcset.spec.runner,
+        mcset.spec.replicas,
     )
     .await?;
 
