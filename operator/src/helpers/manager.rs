@@ -34,7 +34,7 @@ pub struct Manager {
     /// in memory state
     state: Arc<RwLock<State>>,
     /// prometheus metrics
-    metrics: Metrics,
+    _metrics: Metrics,
     /// kube api
     client: Client,
 }
@@ -111,7 +111,7 @@ impl Manager {
         (
             Self {
                 state,
-                metrics,
+                _metrics: metrics,
                 client: client.clone(),
             },
             set_controller,

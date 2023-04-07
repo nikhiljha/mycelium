@@ -19,19 +19,22 @@ repositories {
 
 dependencies {
     testImplementation(kotlin("test-junit5"))
-    testImplementation("org.junit.jupiter:junit-jupiter-api:5.8.2")
-    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.8.2")
+    testImplementation("org.junit.jupiter:junit-jupiter-api:5.9.0")
+    testRuntimeOnly("org.junit.jupiter:junit-jupiter-engine:5.9.0")
 
     implementation("org.jetbrains.kotlin:kotlin-stdlib-jdk8")
-    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.3.2")
-    implementation("io.ktor:ktor-server-core:1.6.7")
-    implementation("io.ktor:ktor-server-netty:1.6.7")
-    implementation("io.ktor:ktor-client-core:1.6.7")
-    implementation("io.ktor:ktor-client-java:1.6.7")
-    implementation("io.ktor:ktor-gson:1.6.7")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json:1.4.1")
+
+    implementation("io.ktor:ktor-server-core:2.2.1")
+    implementation("io.ktor:ktor-server-netty:2.2.1")
+    implementation("io.ktor:ktor-client-core:2.2.1")
+    implementation("io.ktor:ktor-client-java:2.2.1")
+    implementation("io.ktor:ktor-server-content-negotiation:2.2.1")
+    implementation("io.ktor:ktor-serialization-gson:2.2.1")
+
 
     compileOnly("com.velocitypowered:velocity-api:3.1.0")
-    compileOnly("dev.cubxity.plugins:unifiedmetrics-api:0.3.4")
+    compileOnly("dev.cubxity.plugins:unifiedmetrics-api:0.3.6")
     kapt("com.velocitypowered:velocity-api:3.1.0")
 
     implementation(project(":common"))

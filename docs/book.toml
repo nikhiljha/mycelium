@@ -1,0 +1,6 @@
+[book]
+authors = ["Nikhil Jha"]
+language = "en"
+multilingual = false
+src = "src"
+title = "mycelium"

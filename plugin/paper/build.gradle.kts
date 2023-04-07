@@ -17,14 +17,15 @@ dependencies {
     implementation(kotlin("stdlib"))
     implementation(project(":common"))
 
-    implementation("io.ktor:ktor-server-core:1.6.7")
-    implementation("io.ktor:ktor-server-netty:1.6.7")
-    implementation("io.ktor:ktor-client-core:1.6.7")
-    implementation("io.ktor:ktor-client-java:1.6.7")
-    implementation("io.ktor:ktor-gson:1.6.7")
+    implementation("io.ktor:ktor-server-core:2.2.1")
+    implementation("io.ktor:ktor-server-netty:2.2.1")
+    implementation("io.ktor:ktor-client-core:2.2.1")
+    implementation("io.ktor:ktor-client-java:2.2.1")
+    implementation("io.ktor:ktor-server-content-negotiation:2.2.1")
+    implementation("io.ktor:ktor-serialization-gson:2.2.1")
 
-    compileOnly("io.papermc.paper:paper-api:1.18.1-R0.1-SNAPSHOT")
-    compileOnly("dev.cubxity.plugins:unifiedmetrics-api:0.3.4")
+    compileOnly("io.papermc.paper:paper-api:1.19.3-R0.1-SNAPSHOT")
+    compileOnly("dev.cubxity.plugins:unifiedmetrics-api:0.3.6")
     kapt("io.papermc.paper:paper-api:1.18.1-R0.1-SNAPSHOT")
 }
 

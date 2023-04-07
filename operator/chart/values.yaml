@@ -1,15 +1,15 @@
 images:
   pullPolicy: IfNotPresent
-  operator: "harbor.ocf.berkeley.edu/mycelium/operator:{{ .Chart.AppVersion }}"
-  runner: "harbor.ocf.berkeley.edu/mycelium/runner:{{ .Chart.AppVersion }}"
+  operator: "ghcr.io/nikhiljha/mycelium_operator:{{ .Chart.AppVersion }}"
+  runner: "ghcr.io/nikhiljha/mycelium_runner:{{ .Chart.AppVersion }}"
 
 plugins:
   mycelium:
     velocity: "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-velocity-{{ .Chart.AppVersion }}.jar"
     paper: "https://www.ocf.berkeley.edu/~njha/artifacts/mycelium-paper-{{ .Chart.AppVersion }}.jar"
   metrics:
-    velocity: "https://github.com/Cubxity/UnifiedMetrics/releases/download/v0.3.4/unifiedmetrics-platform-velocity-0.3.4.jar"
-    paper: "https://github.com/Cubxity/UnifiedMetrics/releases/download/v0.3.4/unifiedmetrics-platform-bukkit-0.3.4.jar"
+    velocity: "https://github.com/Cubxity/UnifiedMetrics/releases/download/v0.3.x-SNAPSHOT/unifiedmetrics-platform-velocity-0.3.8-SNAPSHOT.jar"
+    paper: "https://github.com/Cubxity/UnifiedMetrics/releases/download/v0.3.x-SNAPSHOT/unifiedmetrics-platform-bukkit-0.3.8-SNAPSHOT.jar"
 
 # resources for the operator ONLY -  server and proxy resources
 # are managed in the MinecraftSet and MinecraftProxy CRDs

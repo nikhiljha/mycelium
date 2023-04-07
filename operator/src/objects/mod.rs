@@ -1,5 +1,4 @@
 use std::{
-    array::IntoIter,
     collections::{BTreeMap, HashMap},
     fmt::Debug,
     iter::Map,
@@ -115,7 +114,7 @@ pub struct VersionTriple {
 }
 
 pub fn make_volume_mount(co: &ConfigOptions) -> VolumeMount {
-    return VolumeMount {
+    VolumeMount {
         name: co.name.clone(),
         mount_path: String::from(
             Path::new("/config/")
@@ -124,7 +123,7 @@ pub fn make_volume_mount(co: &ConfigOptions) -> VolumeMount {
                 .expect("mount path"),
         ),
         ..VolumeMount::default()
-    };
+    }
 }
 
 pub fn make_volume(co: &ConfigOptions) -> Volume {
@@ -150,6 +149,7 @@ pub fn object_to_owner_reference<K: Resource<DynamicType = ()>>(
     })
 }
 
+#[allow(clippy::too_many_arguments)]
 pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
     env: Vec<EnvVar>,
     port: IntOrString,
@@ -174,10 +174,10 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
     // should panic.
     ctx.get_ref().state.write().expect("last_event").last_event = Utc::now();
 
-    let labels = BTreeMap::from_iter(IntoIter::new([(
+    let labels = BTreeMap::from([(
         format!("mycelium.njha.dev/{}", shortname),
         name.clone(),
-    )]));
+    )]);
     let configs = runner.config.unwrap_or_default();
     let mut volume_mounts: Vec<VolumeMount> = configs.iter().map(make_volume_mount).collect();
     let mut volumes: Vec<Volume> = configs.iter().map(make_volume).collect();
@@ -273,6 +273,9 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
         status: None,
     };
 
+    let mut pdbmatches = labels.clone();
+    pdbmatches.insert("mycelium.njha.dev/destroyable".into(), "false".into());
+
     let pdb = PodDisruptionBudget {
         metadata: ObjectMeta {
             name: Some(name.clone()),
@@ -284,11 +287,7 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
             min_available: None,
             selector: Some(LabelSelector {
                 match_expressions: None,
-                match_labels: Some(labels
-                    .iter()
-                    .chain(vec![("mycelium.njha.dev/destroyable".to_string(), "false".to_string())])
-                    .collect()
-                ),
+                match_labels: Some(pdbmatches),
             }),
         }),
         ..PodDisruptionBudget::default()

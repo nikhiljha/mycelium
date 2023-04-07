@@ -26,7 +26,7 @@ fn main() -> Result<(), Error> {
     // copy all the files from config_path to data_path
     // TODO: rewrite properly without Command
     Command::new("sh")
-        .args(&[
+        .args([
             "-c",
             &format!(
                 "cp {}/* {}",
@@ -64,7 +64,7 @@ fn download_file(url: &str, path: PathBuf) {
     println!("downloading {}", url);
     let path_str = path.to_str().unwrap();
     Command::new("curl")
-        .args(&["-L", url, "--output", path_str])
+        .args(["-L", url, "--output", path_str])
         .stdout(Stdio::inherit())
         .stderr(Stdio::inherit())
         .spawn()
@@ -77,10 +77,10 @@ fn run_jar(cwd: &str, file: &str) {
     let jvm_opts = env::var("MYCELIUM_JVM_OPTS").unwrap_or_else(|_| "".into());
     let args: Vec<&str> = jvm_opts
         .split_terminator(' ')
-        .chain(vec!["-jar", file].into_iter())
+        .chain(["-Dsun.net.inetaddr.ttl=0", "-jar", file])
         .collect();
 
-    let mut signals = Signals::new(&[SIGTERM, SIGINT]).unwrap();
+    let mut signals = Signals::new([SIGTERM, SIGINT]).unwrap();
     let mut minecraft = Command::new("java")
         .args(args)
         .current_dir(cwd)
@@ -95,7 +95,7 @@ fn run_jar(cwd: &str, file: &str) {
     thread::spawn(move || {
         for _ in signals.forever() {
             println!("[runner] Caught interrupt, sending sigterm to java...");
-            signal::kill(Pid::from_raw(id as pid_t), nix::sys::signal::Signal::SIGTERM)
+            signal::kill(Pid::from_raw(id as pid_t), signal::Signal::SIGTERM)
                 .expect("can't kill java");
         }
     });
@@ -112,7 +112,7 @@ fn download_plugins(data_path: &Path) -> Result<(), Error> {
     let plugin_dir = plugin_dir_path.to_str().unwrap();
     create_dir_all(plugin_dir)?;
     for p in plugins {
-        let file = p.split('/').last().unwrap();
+        let file = p.split('/').next_back().unwrap();
         let plugin_path = plugin_dir_path.join(file);
         download_file(p, plugin_path);
     }
@@ -122,7 +122,7 @@ fn download_plugins(data_path: &Path) -> Result<(), Error> {
 fn download_run_server(data_path: &Path) -> Result<(), Error> {
     let url = env::var("MYCELIUM_RUNNER_JAR_URL").unwrap();
     let data_path_str = data_path.to_str().unwrap();
-    let file = url.split('/').last().unwrap();
+    let file = url.split('/').next_back().unwrap();
     let paper_jar_path = data_path.join(file);
     download_file(&url, paper_jar_path);
     run_jar(data_path_str, file);

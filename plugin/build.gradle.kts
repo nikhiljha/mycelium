@@ -1,4 +1,4 @@
-val myceliumVersion by extra { "0.4.0" }
+val myceliumVersion by extra { "0.5.0" }
 
 plugins {
     id("com.github.johnrengelman.shadow") version "6.1.0" apply false
