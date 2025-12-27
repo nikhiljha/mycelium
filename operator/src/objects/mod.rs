@@ -32,7 +32,7 @@ use kube::{
     Api, Client, Resource, ResourceExt,
 };
 use kube_runtime::{
-    controller::{Context, ReconcilerAction},
+    controller::Action,
     Controller,
 };
 use prometheus::{
@@ -130,7 +130,7 @@ pub fn make_volume(co: &ConfigOptions) -> Volume {
     Volume {
         name: co.name.clone(),
         config_map: Some(ConfigMapVolumeSource {
-            name: Some(co.name.clone()),
+            name: co.name.clone(),
             ..ConfigMapVolumeSource::default()
         }),
         ..Volume::default()
@@ -153,15 +153,15 @@ pub fn object_to_owner_reference<K: Resource<DynamicType = ()>>(
 pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
     env: Vec<EnvVar>,
     port: IntOrString,
-    ctx: Context<Data>,
+    ctx: Arc<Data>,
     shortname: String,
     crd: T,
     container: ContainerOptions,
     runner: RunnerOptions,
     replicas: i32,
 ) -> Result<(), Error> {
-    let name = ResourceExt::name(&crd);
-    let ns = ResourceExt::namespace(&crd)
+    let name = crd.name_any();
+    let ns = crd.namespace()
         .ok_or_else(|| MyceliumError("failed to get namespace".into()))?;
 
     let owner_reference = OwnerReference {
@@ -169,10 +169,10 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
         ..object_to_owner_reference::<T>(crd.meta().clone())?
     };
 
-    let client = ctx.get_ref().client.clone();
+    let client = ctx.client.clone();
     // Note: This will only error with PoisonError, which is unrecoverable and so we
     // should panic.
-    ctx.get_ref().state.write().expect("last_event").last_event = Utc::now();
+    ctx.state.write().expect("last_event").last_event = Utc::now();
 
     let labels = BTreeMap::from([(
         format!("mycelium.njha.dev/{}", shortname),
@@ -213,7 +213,7 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
             value_from: Some(EnvVarSource {
                 secret_key_ref: Some(SecretKeySelector {
                     key: "forwarding_token".to_string(),
-                    name: Some(name.clone()),
+                    name: name.clone(),
                     optional: Some(false)
                 }),
                 ..EnvVarSource::default()
@@ -240,7 +240,7 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
                 match_labels: Some(labels.clone()),
                 ..LabelSelector::default()
             },
-            service_name: name.clone(),
+            service_name: Some(name.clone()),
             replicas: Some(replicas),
             template: PodTemplateSpec {
                 metadata: Some(ObjectMeta {
@@ -256,7 +256,7 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
                         name: name.clone(),
                         tty: Some(true),
                         stdin: Some(true),
-                        image: Some(String::from(&ctx.get_ref().config.runner_image)),
+                        image: Some(String::from(&ctx.config.runner_image)),
                         image_pull_policy: Some(String::from("IfNotPresent")),
                         resources: container.resources,
                         env: Some(env),
@@ -289,6 +289,7 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
                 match_expressions: None,
                 match_labels: Some(pdbmatches),
             }),
+            unhealthy_pod_eviction_policy: None,
         }),
         ..PodDisruptionBudget::default()
     };
@@ -315,8 +316,9 @@ pub async fn generic_reconcile<T: Resource<DynamicType = ()>>(
     };
 
     let mut token = sha2::Sha224::new();
-    token.update(format!("{}{}", ctx.get_ref().config.forwarding_secret, ns.clone()).as_bytes());
-    let token = base64::encode(token.finalize());
+    token.update(format!("{}{}", ctx.config.forwarding_secret, ns.clone()).as_bytes());
+    use base64::Engine;
+    let token = base64::engine::general_purpose::STANDARD.encode(token.finalize());
     let secret = Secret {
         metadata: ObjectMeta {
             name: Some(name.clone()),

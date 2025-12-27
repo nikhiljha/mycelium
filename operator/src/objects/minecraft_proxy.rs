@@ -1,8 +1,6 @@
 use std::{
-    array::IntoIter,
     collections::{BTreeMap, HashMap},
     env,
-    iter::FromIterator,
     sync::Arc,
 };
 
@@ -27,7 +25,7 @@ use kube::{
     client::Client,
     CustomResource, Resource,
 };
-use kube_runtime::controller::{Context, Controller, ReconcilerAction};
+use kube_runtime::controller::{Action, Controller};
 use maplit::hashmap;
 use prometheus::{
     default_registry, proto::MetricFamily, register_histogram_vec, register_int_counter,
@@ -76,15 +74,15 @@ pub struct MinecraftProxySpec {
 
 #[instrument(skip(ctx), fields(trace_id))]
 pub async fn reconcile(
-    mcproxy: MinecraftProxy,
-    ctx: Context<Data>,
-) -> Result<ReconcilerAction, Error> {
+    mcproxy: Arc<MinecraftProxy>,
+    ctx: Arc<Data>,
+) -> Result<Action, Error> {
     let trace_id = telemetry::get_trace_id();
-    Span::current().record("trace_id", &field::display(&trace_id));
+    Span::current().record("trace_id", field::display(&trace_id));
     let start = Instant::now();
 
-    let name = ResourceExt::name(&mcproxy);
-    let ns = ResourceExt::namespace(&mcproxy)
+    let name = mcproxy.name_any();
+    let ns = mcproxy.namespace()
         .ok_or_else(|| MyceliumError("failed to get namespace".into()))?;
 
     let mut plugin = vec![];
@@ -140,23 +138,20 @@ pub async fn reconcile(
         IntOrString::Int(25577),
         ctx.clone(),
         "mcproxy".to_string(),
-        mcproxy.clone(),
-        mcproxy.spec.container.unwrap_or_default(),
-        mcproxy.spec.runner,
+        (*mcproxy).clone(),
+        mcproxy.spec.container.clone().unwrap_or_default(),
+        mcproxy.spec.runner.clone(),
         mcproxy.spec.replicas,
     )
         .await?;
 
     let duration = start.elapsed().as_millis() as f64 / 1000.0;
-    ctx.get_ref()
-        .metrics
+    ctx.metrics
         .proxy_reconcile_duration
-        .with_label_values(&[])
+        .with_label_values(&[] as &[&str])
         .observe(duration);
-    ctx.get_ref().metrics.proxy_handled_events.inc();
+    ctx.metrics.proxy_handled_events.inc();
     info!("Reconciled MinecraftProxy \"{}\" in {}", name, ns);
 
-    Ok(ReconcilerAction {
-        requeue_after: None,
-    })
+    Ok(Action::await_change())
 }

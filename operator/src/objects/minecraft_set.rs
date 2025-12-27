@@ -1,7 +1,5 @@
 use std::{
-    array::IntoIter,
     collections::{BTreeMap, HashMap},
-    iter::FromIterator,
     sync::Arc,
 };
 
@@ -25,7 +23,7 @@ use kube::{
     client::Client,
     CustomResource, Resource,
 };
-use kube_runtime::controller::{Context, Controller, ReconcilerAction};
+use kube_runtime::controller::{Action, Controller};
 use maplit::hashmap;
 use prometheus::{
     default_registry, proto::MetricFamily, register_histogram_vec, register_int_counter,
@@ -81,13 +79,13 @@ pub struct ProxyOptions {
 }
 
 #[instrument(skip(ctx), fields(trace_id))]
-pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<ReconcilerAction, Error> {
+pub async fn reconcile(mcset: Arc<MinecraftSet>, ctx: Arc<Data>) -> Result<Action, Error> {
     let trace_id = telemetry::get_trace_id();
-    Span::current().record("trace_id", &field::display(&trace_id));
+    Span::current().record("trace_id", field::display(&trace_id));
     let start = Instant::now();
 
-    let name = ResourceExt::name(&mcset);
-    let ns = ResourceExt::namespace(&mcset)
+    let name = mcset.name_any();
+    let ns = mcset.namespace()
         .ok_or_else(|| MyceliumError("failed to get namespace".into()))?;
 
     let mut plugin = vec![];
@@ -122,26 +120,23 @@ pub async fn reconcile(mcset: MinecraftSet, ctx: Context<Data>) -> Result<Reconc
         IntOrString::Int(25565),
         ctx.clone(),
         "mcset".to_string(),
-        mcset.clone(),
-        mcset.spec.container.unwrap_or_default(),
-        mcset.spec.runner,
+        (*mcset).clone(),
+        mcset.spec.container.clone().unwrap_or_default(),
+        mcset.spec.runner.clone(),
         mcset.spec.replicas,
     )
     .await?;
 
     let duration = start.elapsed().as_millis() as f64 / 1000.0;
-    ctx.get_ref()
-        .metrics
+    ctx.metrics
         .set_reconcile_duration
-        .with_label_values(&[])
+        .with_label_values(&[] as &[&str])
         .observe(duration);
-    ctx.get_ref().metrics.set_handled_events.inc();
+    ctx.metrics.set_handled_events.inc();
     info!("Reconciled MinecraftSet \"{}\" in {}", name, ns);
 
     // TODO: Do we need to check back if this succeeded & no changes were made?
     // i.e. Do we want to revert manual edits to StatefulSets or Services on a
     // timer?
-    Ok(ReconcilerAction {
-        requeue_after: None,
-    })
+    Ok(Action::await_change())
 }

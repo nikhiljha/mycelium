@@ -1,4 +1,4 @@
-FROM registry.hub.docker.com/library/rust:1.66 as builder
+FROM rust:1.92 AS builder
 
 WORKDIR ./mycelium-runner
 COPY ./Cargo.toml ./Cargo.toml
@@ -8,11 +8,10 @@ COPY ./defaults ./defaults
 RUN cargo build --release --bin mycelium-runner
 
 
-FROM openjdk:17-slim-bullseye
+FROM eclipse-temurin:21-jdk-alpine-3.23
 LABEL org.opencontainers.image.source=https://github.com/nikhiljha/mycelium
 
-RUN apt-get update && apt-get install -y curl
-RUN apt-get clean autoclean && apt-get autoremove --yes && rm -rf /var/lib/{apt,dpkg,cache,log}/
+RUN apk add --no-cache curl
 
 ENV MYCELIUM_CONFIG_PATH=/config
 ENV MYCELIUM_DATA_PATH=/data

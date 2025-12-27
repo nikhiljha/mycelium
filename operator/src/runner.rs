@@ -7,7 +7,7 @@ use nix::sys::signal;
 use nix::unistd::Pid;
 use signal_hook::consts::{SIGINT, SIGTERM};
 use signal_hook::iterator::Signals;
-use toml_edit::{value, Array, Document, Table};
+use toml_edit::{value, Array, DocumentMut, Table};
 use yaml_rust::{Yaml, YamlEmitter, YamlLoader};
 
 fn main() -> Result<(), Error> {
@@ -184,7 +184,7 @@ fn configure_proxy(token: String, data_path: &Path) -> Result<(), Error> {
         Ok(file) => file,
         Err(_error) => include_str!("../defaults/velocity.toml").to_string(),
     };
-    let mut toml_doc = velocity_toml.parse::<Document>().expect("TOML parse");
+    let mut toml_doc = velocity_toml.parse::<DocumentMut>().expect("TOML parse");
 
     // modify the config
     toml_doc["forwarding-secret"] = value(token);

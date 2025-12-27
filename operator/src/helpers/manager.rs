@@ -10,7 +10,8 @@ use k8s_openapi::api::apps::v1::StatefulSet;
 use k8s_openapi::api::core::v1::{Secret, Service};
 use kube::{api::ListParams, Api, Client};
 use kube_runtime::{
-    controller::{Context, ReconcilerAction},
+    controller::Action,
+    watcher,
     Controller,
 };
 use prometheus::{default_registry, proto::MetricFamily};
@@ -58,8 +59,8 @@ impl Manager {
                 runner_image: env::var("MYCELIUM_RUNNER_IMAGE").unwrap(),
             },
         };
-        let set_context = Context::new(data.clone());
-        let proxy_context = Context::new(data.clone());
+        let set_context = Arc::new(data.clone());
+        let proxy_context = Arc::new(data.clone());
 
         // APIs to watch
         let mcsets = Api::<MinecraftSet>::all(client.clone());
@@ -74,10 +75,10 @@ impl Manager {
         );
 
         // return the controller
-        let set_controller = Controller::new(mcsets, ListParams::default())
-            .owns(statesets.clone(), ListParams::default())
-            .owns(secrets.clone(), ListParams::default())
-            .owns(services.clone(), ListParams::default())
+        let set_controller = Controller::new(mcsets, watcher::Config::default())
+            .owns(statesets.clone(), watcher::Config::default())
+            .owns(secrets.clone(), watcher::Config::default())
+            .owns(services.clone(), watcher::Config::default())
             .run(
                 crate::objects::minecraft_set::reconcile,
                 error_policy,
@@ -91,10 +92,10 @@ impl Manager {
             })
             .boxed();
 
-        let proxy_controller = Controller::new(mcproxies, ListParams::default())
-            .owns(statesets.clone(), ListParams::default())
-            .owns(secrets.clone(), ListParams::default())
-            .owns(services.clone(), ListParams::default())
+        let proxy_controller = Controller::new(mcproxies, watcher::Config::default())
+            .owns(statesets.clone(), watcher::Config::default())
+            .owns(secrets.clone(), watcher::Config::default())
+            .owns(services.clone(), watcher::Config::default())
             .run(
                 crate::objects::minecraft_proxy::reconcile,
                 error_policy,
@@ -164,11 +165,9 @@ impl Manager {
     }
 }
 
-pub fn error_policy(error: &Error, _ctx: Context<Data>) -> ReconcilerAction {
+pub fn error_policy<K>(_obj: Arc<K>, error: &Error, _ctx: Arc<Data>) -> Action {
     warn!("reconcile failed: {:?}", error);
-    ReconcilerAction {
-        requeue_after: Some(Duration::from_secs(360)),
-    }
+    Action::requeue(Duration::from_secs(360))
 }
 
 #[derive(Serialize, Deserialize, Default, Debug, Clone)]

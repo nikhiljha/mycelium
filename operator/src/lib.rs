@@ -4,7 +4,6 @@
 use std::fmt::{Display, Formatter};
 pub use objects::{minecraft_proxy::MinecraftProxy, minecraft_set::MinecraftSet};
 use thiserror::Error;
-use thiserror::private::DisplayAsDisplay;
 
 #[derive(Error, Debug)]
 pub enum Error {
